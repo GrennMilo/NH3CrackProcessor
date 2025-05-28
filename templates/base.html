@@ -215,7 +215,7 @@
             </div>
             <nav class="nav-menu">
                 <a href="{{ url_for('index') }}" {% if request.path == url_for('index') %}class="active"{% endif %}>Home</a>
-                <a href="{{ url_for('upload') }}" {% if request.path == url_for('upload') %}class="active"{% endif %}>Upload</a>
+                <a href="{{ url_for('upload_file') }}" {% if request.path == url_for('upload_file') %}class="active"{% endif %}>Upload</a>
                 <a href="{{ url_for('documentation') }}" {% if request.path == url_for('documentation') %}class="active"{% endif %}>Documentation</a>
             </nav>
         </div>
