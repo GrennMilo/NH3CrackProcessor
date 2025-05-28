@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+
+{% block title %}NH3 Cracking - Upload Data{% endblock %}
+
+{% block content %}
+<div class="card">
+    <a href="{{ url_for('index') }}" class="back-link">← Back to Experiments</a>
+    <h2>Upload Experimental Data</h2>
+    
+    <div class="upload-container">
+        <p>Select a text file containing experimental data to upload.</p>
+        <p>Supported file formats: <code>.txt</code> (tab-separated with header)</p>
+        
+        <form method="post" enctype="multipart/form-data" class="upload-form">
+            <div class="file-input">
+                <input type="file" name="file" id="file" accept=".txt" aria-label="Upload experimental data file">
+            </div>
+            <div>
+                <button type="submit" class="btn">Upload and Process</button>
+            </div>
+        </form>
+    </div>
+    
+    <div class="info-message">
+        <h3>File Format Guidelines</h3>
+        <ul>
+            <li>Files should be tab-separated text files (<code>.txt</code>)</li>
+            <li>First column should contain datetime information</li>
+            <li>Second column should be named 'Stage' (or will be interpreted as such) to identify different experimental stages</li>
+            <li>Header row should contain column names</li>
+            <li>Numeric data columns should contain measurements</li>
+            <li>Filename format suggestion: <code>YYYY_MM_DD_Exp_XXX_#XXXX.txt</code></li>
+        </ul>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Batch Processing</h2>
+    <p>Process all files in the uploads folder at once.</p>
+    <button id="btn-process-all" class="btn">Process All Files</button>
+    <div id="batch-output" class="ml-output"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const btnProcessAll = document.getElementById('btn-process-all');
+        const batchOutput = document.getElementById('batch-output');
+        
+        // Process all files
+        btnProcessAll.addEventListener('click', function() {
+            if (!confirm('Process all files in the uploads folder?')) return;
+            
+            const processingMessage = document.createElement('div');
+            processingMessage.className = 'processing-message';
+            processingMessage.textContent = 'Processing all files...';
+            document.body.appendChild(processingMessage);
+            
+            batchOutput.style.display = 'block';
+            batchOutput.innerHTML = '<div class="loading">Running batch processing...</div>';
+            
+            fetch('/api/process-all')
+                .then(response => response.json())
+                .then(data => {
+                    document.body.removeChild(processingMessage);
+                    let outputHtml = '';
+                    
+                    if (data.success) {
+                        outputHtml += `<div class="output-success">✅ ${data.message}</div>`;
+                        outputHtml += `<div class="output-info">Processed ${data.processed_files.length} files:</div>`;
+                        outputHtml += '<ul>';
+                        data.processed_files.forEach(file => {
+                            outputHtml += `<li>${file}</li>`;
+                        });
+                        outputHtml += '</ul>';
+                        
+                        if (data.errors.length > 0) {
+                            outputHtml += `<div class="output-error">❌ ${data.errors.length} errors occurred:</div>`;
+                            outputHtml += '<ul>';
+                            data.errors.forEach(error => {
+                                outputHtml += `<li>${error.file}: ${error.error}</li>`;
+                            });
+                            outputHtml += '</ul>';
+                        }
+                    } else {
+                        outputHtml += `<div class="output-error">❌ ${data.message}</div>`;
+                        if (data.traceback) {
+                            outputHtml += `<pre class="output-error">${data.traceback}</pre>`;
+                        }
+                    }
+                    
+                    batchOutput.innerHTML = outputHtml;
+                })
+                .catch(error => {
+                    document.body.removeChild(processingMessage);
+                    batchOutput.innerHTML = `<div class="output-error">❌ Network Error: ${error.message}</div>`;
+                    console.error('Error processing all files:', error);
+                });
+        });
+    });
+</script>
+{% endblock %} 

@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}NH3 Cracking - Experiments{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Available Experiments</h2>
+    
+    {% if not experiments %}
+        <p>No experiments found in Reports folder. Please run the MeOH Slicer processor first.</p>
+    {% else %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Experiment</th>
+                    <th>Stages</th>
+                    <th>Data Points</th>
+                    <th>GC Data</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for exp in experiments %}
+                <tr>
+                    <td>{{ exp.name }}</td>
+                    <td>{{ exp.stages }}</td>
+                    <td>{{ exp.summary.processing_statistics.total_data_points if exp.summary and exp.summary.processing_statistics and exp.summary.processing_statistics.total_data_points else 'N/A' }}</td>
+                    <td>{{ 'Yes' if exp.summary and exp.summary.processing_statistics and exp.summary.processing_statistics.data_coverage and exp.summary.processing_statistics.data_coverage.gc_data else 'No' }}</td>
+                    <td>
+                        <a href="{{ url_for('experiment', experiment_name=exp.name) }}" class="btn">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+</div>
+{% endblock %} 

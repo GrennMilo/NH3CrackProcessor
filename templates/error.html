@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block title %}NH3 Cracking - Error{% endblock %}
+
+{% block content %}
+<div class="card">
+    <a href="{{ url_for('index') }}" class="back-link">← Back to Experiments</a>
+    <h2>Error</h2>
+    
+    <div class="error-message">
+        {{ message }}
+    </div>
+    
+    {% if details %}
+    <div class="error-details">
+        <h3>Technical Details</h3>
+        <pre>{{ details }}</pre>
+    </div>
+    {% endif %}
+</div>
+{% endblock %} 
