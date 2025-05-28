@@ -3,9 +3,14 @@ import numpy as np
 from scipy.interpolate import interp1d
 import json
 import os
+import sys
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.utils import PlotlyJSONEncoder
+
+# Add the parent directory to sys.path to import config
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import config
 
 class ExperimentalDataProcessor:
     def __init__(self, input_folder="uploads", output_folder="Reports"):
@@ -482,6 +487,100 @@ class ExperimentalDataProcessor:
                     json.dump(plotly_data, f, indent=2, cls=PlotlyJSONEncoder)
             else:
                 print(f"Warning: No data available for {group_name} plot")
+    
+    def create_category_plotly_jsons(self, stages, base_filename, timestamp, exp_dir):
+        """Create specialized Plotly-compatible JSON files for different data categories"""
+        # Use data categories defined in the config file
+        categories = config.DATA_CATEGORIES
+        
+        # Create a separate plot for each category
+        for category_name, category_config in categories.items():
+            # Create a plot data object
+            title = f"{category_config['title']} - {base_filename}"
+            
+            # Define bright colors for better visibility on dark background
+            colors = config.PLOT_COLORS
+            
+            # Create traces
+            traces = []
+            
+            for i, (stage_num, stage_df) in enumerate(stages.items()):
+                # Skip stages with no data for this category
+                has_data = False
+                
+                # Special handling for multipoint temperature columns or other pattern-based categories
+                if 'column_pattern' in category_config:
+                    available_columns = [col for col in stage_df.columns if 
+                                         category_config['column_pattern'] in col and col.endswith('\u00b0C')]
+                else:
+                    # Filter columns that exist in the dataframe
+                    available_columns = [col for col in category_config['columns'] if col in stage_df.columns]
+                
+                if not available_columns:
+                    continue
+                
+                # Assign a color for this stage
+                stage_color = colors[i % len(colors)]
+                
+                # Create a trace for each column in this category
+                for col in available_columns:
+                    trace = {
+                        'x': stage_df['Time_Minutes'].tolist(),
+                        'y': stage_df[col].tolist(),
+                        'type': 'scatter',
+                        'mode': 'lines',
+                        'name': f'Stage {stage_num} - {col}',
+                        'line': {'color': stage_color, 'width': 2},
+                        'legendgroup': f'stage_{stage_num}'
+                    }
+                    traces.append(trace)
+            
+            # Create layout
+            layout = {
+                'title': title,
+                'xaxis': {
+                    'title': 'Time (minutes)',
+                    'gridcolor': config.PLOTLY_GRID_COLOR
+                },
+                'yaxis': {
+                    'title': category_config['y_axis_title'],
+                    'gridcolor': config.PLOTLY_GRID_COLOR
+                },
+                'hovermode': 'closest',
+                'template': config.PLOTLY_THEME,
+                'paper_bgcolor': config.PLOTLY_PAPER_BGCOLOR,
+                'plot_bgcolor': config.PLOTLY_PLOT_BGCOLOR,
+                'font': {'color': config.PLOTLY_FONT_COLOR},
+                'legend': {
+                    'orientation': 'v',
+                    'bgcolor': 'rgba(0,0,0,0.5)',
+                    'bordercolor': 'rgba(255,255,255,0.2)',
+                    'borderwidth': 1
+                }
+            }
+            
+            # Create Plotly data
+            plotly_data = {
+                'data': traces,
+                'layout': layout
+            }
+            
+            # Skip if no data
+            if not traces:
+                print(f"Warning: No data found for category '{category_name}'")
+                continue
+            
+            # Save the category plot
+            plot_filename = f"{base_filename}_{category_config['filename_suffix']}"
+            plot_path = os.path.join(exp_dir, plot_filename)
+            
+            with open(plot_path, 'w') as f:
+                json.dump(plotly_data, f, indent=2, cls=PlotlyJSONEncoder)
+            
+            print(f"Saved {category_name} plot: {plot_path}")
+        
+        # Create overall plot with all stages and categories
+        self.create_plotly_json(stages, base_filename, timestamp, os.path.join(exp_dir, f"{base_filename}_plotly_data.json"))
     
     def process_file(self, filename):
         """Main processing function"""

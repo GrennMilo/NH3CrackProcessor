@@ -1,0 +1,326 @@
+{% extends 'base.html' %}
+
+{% block title %}NH3 Cracking - Documentation{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>NH3 Cracking Processor and Visualizer Documentation</h2>
+    
+    <div class="toc">
+        <h3>Table of Contents</h3>
+        <ul>
+            <li><a href="#overview">Overview</a></li>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#installation">Installation</a></li>
+            <li><a href="#quick-start">Quick Start</a></li>
+            <li><a href="#usage">Usage</a></li>
+            <li><a href="#data-processing">Data Processing</a></li>
+            <li><a href="#visualization">Visualization</a></li>
+            <li><a href="#directory-structure">Directory Structure</a></li>
+            <li><a href="#output-data-structure">Output Data Structure</a></li>
+            <li><a href="#technical-details">Technical Details</a></li>
+            <li><a href="#troubleshooting">Troubleshooting</a></li>
+        </ul>
+    </div>
+
+    <section id="overview">
+        <h3>Overview</h3>
+        <p>NH3 Cracking Processor and Visualizer is a specialized tool designed for scientists and engineers working with ammonia cracking experiments. It automates the processing of raw experimental data, detects different experimental stages, performs necessary data transformations, and generates interactive visualizations for analysis.</p>
+        <p>The application is built with Python using Flask for the web framework, Pandas and NumPy for data processing, and Plotly for interactive data visualization. It provides both a user-friendly web interface and programmatic access through an API.</p>
+    </section>
+
+    <section id="features">
+        <h3>Features</h3>
+        <ul>
+            <li><strong>Automated Data Processing</strong>: Process experimental data from tab-separated text files with a single click</li>
+            <li><strong>Multi-Encoding Support</strong>: Automatically handles files with different text encodings (UTF-8, Latin1, CP1252, ISO-8859-1)</li>
+            <li><strong>Intelligent DateTime Parsing</strong>: Handles multiple date-time formats automatically</li>
+            <li><strong>Stage Detection</strong>: Automatically detect and separate experimental stages based on the Stage column</li>
+            <li><strong>Data Interpolation</strong>: Perform cubic interpolation for a consistent time vector with 1-minute intervals</li>
+            <li><strong>Missing Data Handling</strong>: Gracefully handles missing or incomplete data</li>
+            <li><strong>Category-Based Analysis</strong>: Automatically organizes measurements into logical categories (temperature, pressure, flow, etc.)</li>
+            <li><strong>Interactive Visualization</strong>: Generate Plotly-based interactive visualizations with zoom, pan, and hover capabilities</li>
+            <li><strong>Dark-Mode Optimized UI</strong>: Dark-themed interface with high-contrast plots for better data visibility</li>
+            <li><strong>Specialized Plot Categories</strong>:
+                <ul>
+                    <li>Temperature measurements</li>
+                    <li>Multipoint temperature measurements</li>
+                    <li>Saturator temperature</li>
+                    <li>Pressure measurements</li>
+                    <li>Flow measurements</li>
+                    <li>Outlet stream composition</li>
+                </ul>
+            </li>
+            <li><strong>Web Interface</strong>: Easy-to-use web interface for data management and visualization</li>
+            <li><strong>RESTful API</strong>: Programmatic access to all functionality</li>
+            <li><strong>Batch Processing</strong>: Process multiple files at once</li>
+            <li><strong>Export Options</strong>: Export data in CSV and JSON formats</li>
+            <li><strong>Responsive Design</strong>: Works on desktop and tablet devices</li>
+        </ul>
+    </section>
+
+    <section id="installation">
+        <h3>Installation</h3>
+        <h4>Requirements</h4>
+        <ul>
+            <li>Python 3.8 or higher</li>
+            <li>pip (Python package installer)</li>
+            <li>Git (optional, for cloning the repository)</li>
+        </ul>
+
+        <h4>Dependencies</h4>
+        <p>The application requires several Python libraries:</p>
+        <ul>
+            <li><strong>Flask</strong>: Web framework</li>
+            <li><strong>Pandas</strong>: Data manipulation and analysis</li>
+            <li><strong>NumPy</strong>: Numerical computing</li>
+            <li><strong>SciPy</strong>: Scientific computing (used for interpolation)</li>
+            <li><strong>Plotly</strong>: Interactive visualizations</li>
+            <li><strong>Werkzeug</strong>: WSGI utility library for Python</li>
+            <li><strong>Jinja2</strong>: Template engine</li>
+            <li><strong>MarkupSafe</strong>: Escapes characters so text is safe to use in HTML and XML</li>
+            <li><strong>Click</strong>: Command line interface creation kit</li>
+            <li><strong>itsdangerous</strong>: Various helpers to pass data to untrusted environments securely</li>
+            <li><strong>Path</strong>: Path manipulation utilities</li>
+        </ul>
+
+        <h4>Installation Steps</h4>
+        <ol>
+            <li>Clone the repository:
+                <pre><code>git clone https://github.com/GrennMilo/NH3CrackProcessor.git
+cd NH3CrackProcessor</code></pre>
+            </li>
+            <li>Create and activate a virtual environment (optional but recommended):
+                <pre><code># On Windows
+python -m venv venv
+venv\Scripts\activate
+
+# On macOS/Linux
+python3 -m venv venv
+source venv/bin/activate</code></pre>
+            </li>
+            <li>Install the required dependencies:
+                <pre><code>pip install -r requirements.txt</code></pre>
+            </li>
+            <li>Create necessary directories (these will be created automatically when running the app, but you can create them manually):
+                <pre><code>mkdir -p uploads Reports</code></pre>
+            </li>
+        </ol>
+    </section>
+
+    <section id="quick-start">
+        <h3>Quick Start</h3>
+        <p>To quickly start the application:</p>
+        <pre><code>python app.py</code></pre>
+        <p>This will start the Flask web server on http://localhost:8080 by default. You can then access the web interface by opening this URL in your web browser.</p>
+        
+        <p>For processing all files in the uploads folder at once:</p>
+        <pre><code>python process_all.py</code></pre>
+    </section>
+
+    <section id="usage">
+        <h3>Usage</h3>
+        
+        <h4>Web Interface</h4>
+        <p>The NH3 Cracking Processor and Visualizer provides an intuitive web interface for managing experiments.</p>
+        
+        <h5>Home Page</h5>
+        <p>The home page displays a list of all processed experiments, with the most recent experiments at the top. For each experiment, you can see:</p>
+        <ul>
+            <li>Experiment name</li>
+            <li>Processing date</li>
+            <li>Number of stages</li>
+            <li>Quick action buttons</li>
+        </ul>
+        
+        <h5>Upload Page</h5>
+        <p>The upload page allows you to upload new experimental data files. It supports:</p>
+        <ul>
+            <li>Drag and drop file upload</li>
+            <li>File selection dialog</li>
+            <li>Progress indication during upload</li>
+            <li>Automatic processing after upload</li>
+        </ul>
+        <p>The application only accepts tab-separated text files (.txt).</p>
+        
+        <h5>Experiment Page</h5>
+        <p>The experiment page provides a detailed view of a specific experiment:</p>
+        <ul>
+            <li>Overall Campaign Data: Shows all measurements across all stages</li>
+            <li>DateTime Vector Visualization: Precise time-based visualization</li>
+            <li>Specialized Data Categories: Categorized measurements (temperature, pressure, etc.)</li>
+            <li>Stage Selection: Individual stage data visualization</li>
+            <li>Plot Controls: Customize plot appearance (line/scatter, theme)</li>
+            <li>Action Buttons: Process experiment, regenerate visualizations</li>
+        </ul>
+        
+        <h4>API Reference</h4>
+        <p>The application provides a RESTful API for programmatic access to its functionality.</p>
+        
+        <h5>Experiment List</h5>
+        <pre><code>GET /api/experiments</code></pre>
+        <p>Returns a list of all processed experiments.</p>
+        
+        <h5>Process Experiment</h5>
+        <pre><code>GET /api/process/&lt;experiment_name&gt;</code></pre>
+        <p>Processes or reprocesses an experiment.</p>
+        
+        <h5>Get Overall Plot Data</h5>
+        <pre><code>GET /api/experiment/&lt;experiment_name&gt;/overall</code></pre>
+        <p>Returns the overall plot data for an experiment.</p>
+        
+        <h5>Get Category Plot Data</h5>
+        <pre><code>GET /api/experiment/&lt;experiment_name&gt;/category/&lt;category&gt;</code></pre>
+        <p>Returns the plot data for a specific category.</p>
+        
+        <h5>Get Stage Plot Data</h5>
+        <pre><code>GET /api/experiment/&lt;experiment_name&gt;/stage/&lt;stage_num&gt;</code></pre>
+        <p>Returns the plot data for a specific stage.</p>
+    </section>
+
+    <section id="data-processing">
+        <h3>Data Processing</h3>
+        
+        <h4>Input Data Format</h4>
+        <p>The processor expects tab-separated text files with:</p>
+        <ul>
+            <li>First column: Date/time information in various formats</li>
+            <li>Second column: Stage identifier (integer values to identify different experimental stages)</li>
+            <li>Remaining columns: Numeric measurement data</li>
+        </ul>
+        
+        <h4>Processing Pipeline</h4>
+        <p>The data processing pipeline consists of the following steps:</p>
+        <ol>
+            <li><strong>File Reading</strong>: Read the tab-separated file with automatic encoding detection</li>
+            <li><strong>Time Vector Creation</strong>: Convert datetime strings to a consistent time vector in minutes</li>
+            <li><strong>Stage Detection</strong>: Identify different experimental stages based on the Stage column</li>
+            <li><strong>Data Interpolation</strong>: Perform cubic interpolation to create a consistent time grid</li>
+            <li><strong>Column Mapping</strong>: Analyze and categorize columns based on their content</li>
+            <li><strong>Data Export</strong>: Export processed data in CSV and JSON formats</li>
+            <li><strong>Visualization Generation</strong>: Create interactive visualizations for different data views</li>
+        </ol>
+    </section>
+
+    <section id="visualization">
+        <h3>Visualization</h3>
+        
+        <h4>Plotly Integration</h4>
+        <p>The application uses Plotly to create interactive visualizations. Plotly data is generated in JSON format and served to the frontend through the API.</p>
+        
+        <h4>Data Categories</h4>
+        <p>The application categorizes measurements into logical groups:</p>
+        <ul>
+            <li><strong>Temperature</strong>: Main temperature measurements (R1/2 T read, Saturator T read, etc.)</li>
+            <li><strong>Multipoint Temperature</strong>: Temperature measurements at multiple points</li>
+            <li><strong>Saturator Temperature</strong>: Specialized view for saturator temperature</li>
+            <li><strong>Pressure</strong>: Pressure measurements across different parts of the system</li>
+            <li><strong>Flow</strong>: Flow rates and related measurements</li>
+            <li><strong>Outlet Composition</strong>: Composition measurements of the outlet stream</li>
+        </ul>
+        
+        <h4>Visualization Types</h4>
+        <p>The application provides several types of visualizations:</p>
+        <ol>
+            <li><strong>Overall Plot</strong>: Shows all measurements across all stages</li>
+            <li><strong>Category Plots</strong>: Shows measurements grouped by category</li>
+            <li><strong>Stage Plots</strong>: Shows all measurements for a specific stage</li>
+            <li><strong>DateTime Vector Visualization</strong>: Shows measurements with precise time positioning</li>
+        </ol>
+    </section>
+
+    <section id="directory-structure">
+        <h3>Directory Structure</h3>
+        <p>The NH3 Cracking Processor and Visualizer project follows a well-organized directory structure:</p>
+        <pre><code>NH3CrackProcessor/
+├── app.py                  # Main Flask application entry point
+├── process_all.py          # Script to process all experiments in the Uploads folder
+├── requirements.txt        # Python dependencies
+├── ReadMe.md               # This documentation file
+├── .gitignore              # Git ignore configuration
+├── Processors/             # Data processing modules and utilities
+│   ├── Main_Web_ProcessorNH3Crack.py   # Core data processing implementation
+│   ├── fix_plots.py                    # Utility to fix or regenerate plots
+│   ├── test_paths.py                   # Utility to test file paths
+│   ├── test_server.py                  # Server testing utilities
+│   ├── setup_and_run.py                # Setup and deployment utilities
+│   ├── run.py                          # Runner script
+│   ├── test_connection.py              # Network connection test
+│   ├── basic_app.py                    # Simplified Flask app for testing
+│   ├── debug_app.py                    # Debug version of the app
+│   └── quick_start.py                  # Quick start utility
+├── Reports/                # Generated reports and visualizations
+├── static/                 # Static web assets
+├── templates/              # Jinja2 HTML templates
+└── Uploads/                # Directory for raw experimental data files</code></pre>
+    </section>
+
+    <section id="output-data-structure">
+        <h3>Output Data Structure</h3>
+        <p>The processor generates a hierarchical folder structure to organize the processed data:</p>
+        <pre><code>Reports/
+└── ExperimentName/               # One folder per experiment
+    ├── experiment_summary.json   # Overall experiment metadata
+    ├── ExperimentName_complete.csv   # All stages combined
+    ├── ExperimentName_all_stages.json # All data in JSON format
+    ├── ExperimentName_plotly_data.json # Visualization data for all stages
+    ├── ExperimentName_temperature_plotly.json # Temperature category plot
+    ├── ExperimentName_pressure_plotly.json # Pressure category plot
+    ├── ExperimentName_flow_plotly.json # Flow category plot
+    ├── ExperimentName_outlet_composition_plotly.json # Composition category plot
+    └── stage_1/                  # One subfolder per stage
+        ├── stage_1_data.csv      # CSV data for stage 1
+        ├── stage_1_data.json     # JSON data for stage 1
+        └── stage_1_plotly.json   # Visualization data for stage 1</code></pre>
+    </section>
+
+    <section id="technical-details">
+        <h3>Technical Details</h3>
+        
+        <h4>Dependencies</h4>
+        <p>The application requires the following Python libraries:</p>
+        <ul>
+            <li>Flask</li>
+            <li>Pandas</li>
+            <li>NumPy</li>
+            <li>SciPy</li>
+            <li>Plotly</li>
+            <li>Werkzeug</li>
+            <li>Jinja2</li>
+        </ul>
+        
+        <h4>Core Components</h4>
+        <p>The application consists of the following core components:</p>
+        <ul>
+            <li><strong>ExperimentalDataProcessor</strong>: Handles data processing and visualization generation</li>
+            <li><strong>WebInterface</strong>: Provides the user interface for managing experiments and visualizing data</li>
+            <li><strong>API</strong>: Allows programmatic access to the application's functionality</li>
+        </ul>
+    </section>
+
+    <section id="troubleshooting">
+        <h3>Troubleshooting</h3>
+        
+        <h4>Common Issues</h4>
+        
+        <h5>Error: "No such file or directory"</h5>
+        <p>This error occurs when the application can't find a requested file. Make sure:</p>
+        <ul>
+            <li>The file exists in the specified location</li>
+            <li>The file name is correctly spelled (case-sensitive)</li>
+            <li>The application has permission to access the file</li>
+        </ul>
+        
+        <h5>Error: "Failed with all encodings"</h5>
+        <p>This error occurs when the application can't determine the file encoding. Try:</p>
+        <ul>
+            <li>Saving the file with UTF-8 encoding</li>
+            <li>Checking for invalid characters in the file</li>
+            <li>Ensuring the file is properly formatted (tab-separated)</li>
+        </ul>
+        
+        <h5>Error: "Not enough data points for cubic interpolation"</h5>
+        <p>This error occurs when a column doesn't have enough data points for cubic interpolation. The application requires at least 4 data points for cubic interpolation.</p>
+    </section>
+</div>
+{% endblock %} 

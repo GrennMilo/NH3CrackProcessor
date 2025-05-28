@@ -19,6 +19,9 @@ from werkzeug.utils import secure_filename
 # Import the processor class
 from Processors.Main_Web_ProcessorNH3Crack import ExperimentalDataProcessor
 
+# Import configuration
+import config
+
 app = Flask(__name__)
 
 # Configure logging
@@ -32,11 +35,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Configuration
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['REPORTS_FOLDER'] = 'reports'
-app.config['MAX_CONTENT_LENGTH'] = 300 * 1024 * 1024  # 300 MB limit
-app.config['ALLOWED_EXTENSIONS'] = {'txt'}
+# Apply configuration settings
+app.config['UPLOAD_FOLDER'] = config.UPLOAD_FOLDER
+app.config['REPORTS_FOLDER'] = config.REPORTS_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
+app.config['ALLOWED_EXTENSIONS'] = config.ALLOWED_EXTENSIONS
+
+# Define available plot categories
+PLOT_CATEGORIES = list(config.DATA_CATEGORIES.keys())
 
 # Ensure folders exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -592,6 +598,11 @@ def upload_file():
             return render_template('error.html', message="File type not allowed")
     
     return render_template('upload.html')
+
+@app.route('/documentation')
+def documentation():
+    """Documentation page with information about the application"""
+    return render_template('documentation.html')
 
 # Run the application
 if __name__ == '__main__':

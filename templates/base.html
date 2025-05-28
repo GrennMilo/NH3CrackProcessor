@@ -168,6 +168,34 @@
             border-radius: 4px;
         }
         
+        /* Navigation Menu Styles */
+        .nav-menu {
+            display: flex;
+            margin-top: 1rem;
+            background-color: var(--card-color);
+            border-radius: 4px;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        .nav-menu a {
+            color: var(--text-color);
+            padding: 0.8rem 1.5rem;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        
+        .nav-menu a:hover {
+            background-color: var(--hover-color);
+            text-decoration: none;
+        }
+        
+        .nav-menu a.active {
+            background-color: var(--primary-color);
+            color: #000;
+        }
+        
         footer {
             margin-top: 2rem;
             padding: 1rem 0;
@@ -185,6 +213,11 @@
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <h1><a href="{{ url_for('index') }}">NH3 Cracking Visualizer</a></h1>
             </div>
+            <nav class="nav-menu">
+                <a href="{{ url_for('index') }}" {% if request.path == url_for('index') %}class="active"{% endif %}>Home</a>
+                <a href="{{ url_for('upload') }}" {% if request.path == url_for('upload') %}class="active"{% endif %}>Upload</a>
+                <a href="{{ url_for('documentation') }}" {% if request.path == url_for('documentation') %}class="active"{% endif %}>Documentation</a>
+            </nav>
         </div>
     </header>
     
