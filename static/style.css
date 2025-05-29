@@ -383,4 +383,129 @@ header h1 a {
   border: 1px solid #666;
   border-radius: 4px;
   padding: 5px 10px;
+}
+
+/* Documentation section cards */
+.documentation-section {
+  background-color: #2d2d2d;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 30px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid #5c9eff;
+  position: relative;
+  overflow: hidden;
+}
+
+.documentation-section:before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 150px;
+  height: 150px;
+  background: linear-gradient(135deg, rgba(92, 158, 255, 0.1) 0%, transparent 100%);
+  border-radius: 0 0 0 150px;
+  z-index: 0;
+}
+
+.documentation-section h3 {
+  color: #5c9eff;
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 1.8em;
+  position: relative;
+  z-index: 1;
+}
+
+.documentation-section h4 {
+  color: #ff6e6e;
+  margin-top: 25px;
+  margin-bottom: 15px;
+  font-size: 1.4em;
+  position: relative;
+  z-index: 1;
+}
+
+.documentation-section h5 {
+  color: #6dff6d;
+  margin-top: 20px;
+  margin-bottom: 10px;
+  font-size: 1.2em;
+  position: relative;
+  z-index: 1;
+}
+
+.documentation-section p, 
+.documentation-section ul, 
+.documentation-section ol,
+.documentation-section table,
+.documentation-section pre {
+  position: relative;
+  z-index: 1;
+}
+
+/* Documentation section color variations */
+.documentation-section:nth-child(3n+1) {
+  border-left-color: #5c9eff;
+}
+
+.documentation-section:nth-child(3n+1) h3 {
+  color: #5c9eff;
+}
+
+.documentation-section:nth-child(3n+2) {
+  border-left-color: #ff6e6e;
+}
+
+.documentation-section:nth-child(3n+2) h3 {
+  color: #ff6e6e;
+}
+
+.documentation-section:nth-child(3n+3) {
+  border-left-color: #6dff6d;
+}
+
+.documentation-section:nth-child(3n+3) h3 {
+  color: #6dff6d;
+}
+
+/* Documentation diagrams */
+.diagram-container {
+  background-color: #1e1e1e;
+  border-radius: 4px;
+  padding: 15px;
+  margin: 20px 0;
+  overflow-x: auto;
+}
+
+.diagram-container pre {
+  margin: 0;
+  white-space: pre;
+  font-family: monospace;
+  color: #e0e0e0;
+}
+
+/* Documentation tables */
+.documentation-section table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+}
+
+.documentation-section th {
+  background-color: #1e1e1e;
+  color: #e0e0e0;
+  text-align: left;
+  padding: 10px;
+  border-bottom: 2px solid #5c9eff;
+}
+
+.documentation-section td {
+  padding: 10px;
+  border-bottom: 1px solid #444;
+}
+
+.documentation-section tr:hover {
+  background-color: #3a3a3a;
 } 

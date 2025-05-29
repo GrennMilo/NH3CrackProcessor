@@ -10,7 +10,16 @@ import os
 import sys
 import json
 import argparse
-from Processors.Main_Web_ProcessorNH3Crack import ExperimentalDataProcessor
+
+# Ensure Processors directory is in the path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import the processor class
+try:
+    from Processors import ExperimentalDataProcessor
+except ImportError:
+    # Fallback for backwards compatibility
+    from Main_Web_ProcessorNH3Crack import ExperimentalDataProcessor
 
 def main():
     parser = argparse.ArgumentParser(description='Fix JSON files with NaN values')

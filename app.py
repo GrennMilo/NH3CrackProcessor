@@ -16,8 +16,15 @@ from flask import Flask, render_template, request, jsonify, send_from_directory,
 import logging
 from werkzeug.utils import secure_filename
 
+# Ensure Processors directory is in the path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 # Import the processor class
-from Processors.Main_Web_ProcessorNH3Crack import ExperimentalDataProcessor
+try:
+    from Processors import ExperimentalDataProcessor
+except ImportError:
+    # Fallback for backwards compatibility
+    from Main_Web_ProcessorNH3Crack import ExperimentalDataProcessor
 
 # Import configuration
 import config

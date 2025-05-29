@@ -18,6 +18,10 @@ A comprehensive web application for processing, analyzing, and visualizing NH3 (
   - [Web Interface](#web-interface)
   - [Command Line Interface](#command-line-interface)
   - [API Reference](#api-reference)
+    - [API Endpoints](#api-endpoints)
+    - [Data Formats](#data-formats)
+    - [Error Handling](#error-handling)
+    - [API Usage Examples](#api-usage-examples)
 - [Data Processing](#data-processing)
   - [Input Data Format](#input-data-format)
   - [Processing Pipeline](#processing-pipeline)
@@ -223,148 +227,481 @@ python process_all.py
 
 ### API Reference
 
-The application provides a RESTful API for programmatic access to its functionality.
+The NH3 Cracking Processor and Visualizer provides a comprehensive RESTful API for programmatic access to its functionality. This allows integration with other systems and automation of data processing and visualization tasks.
 
-#### Experiment List
+#### API Endpoints
+
+| Endpoint | Method | Description | Parameters |
+|----------|--------|-------------|------------|
+| `/api/experiments` | GET | Get a list of all processed experiments | None |
+| `/api/experiment/<experiment_name>/overall` | GET | Get overall plot data for an experiment | `type`: Plot type (temperature, multipoint, saturator, pressure, flow, outlet) |
+| `/api/experiment/<experiment_name>/stage/<stage_num>` | GET | Get plot data for a specific stage | `type`: Plot type (temperature, multipoint, saturator, pressure, flow, outlet) |
+| `/api/process/<experiment_name>` | GET | Process a specific experiment | None |
+| `/api/process-all` | GET | Process all experiments in the uploads folder | None |
+| `/api/visualize/<experiment_name>` | GET | Generate visualizations for an experiment | None |
+| `/api/experiment/<experiment_name>/fix-json` | GET | Fix JSON files with NaN values for a specific experiment | None |
+
+##### Experiment List Endpoint
 
 ```
 GET /api/experiments
 ```
 
-Returns a list of all processed experiments.
+Returns a list of all processed experiments with their metadata.
 
-#### Process Experiment
+**Response Example:**
+
+```json
+[
+  {
+    "name": "24_06_10 13_21_12",
+    "summary": {
+      "metadata": {
+        "processed_at": "2025-05-29T20:23:15.301851",
+        "total_stages": 1,
+        "stage_numbers": [2],
+        "base_filename": "24_06_10 13_21_12"
+      }
+    },
+    "stages": 1
+  },
+  {
+    "name": "25_02_28 14_02_06 Exp 011_Blak_Silcotek_New_SiO2_TC_QRZ",
+    "summary": {
+      "metadata": {
+        "processed_at": "2025-05-30T10:45:32.123456",
+        "total_stages": 3,
+        "stage_numbers": [1, 2, 3],
+        "base_filename": "25_02_28 14_02_06 Exp 011_Blak_Silcotek_New_SiO2_TC_QRZ"
+      }
+    },
+    "stages": 3
+  }
+]
+```
+
+##### Overall Plot Data Endpoint
+
+```
+GET /api/experiment/<experiment_name>/overall?type=<plot_type>
+```
+
+Returns the Plotly JSON data for the specified plot type. Default plot type is "temperature" if not specified.
+
+**Parameters:**
+- `experiment_name`: Name of the experiment (URL-encoded if it contains spaces)
+- `type`: Plot type (one of: temperature, multipoint, saturator, pressure, flow, outlet)
+
+**Response Example (abbreviated):**
+
+```json
+{
+  "metadata": {
+    "title": "Temperature Data - 24_06_10 13_21_12",
+    "processed_at": "2025-05-29T20:23:15.390748",
+    "total_stages": 1
+  },
+  "data": [
+    {
+      "x": [0.0, 1.0, 2.0, 3.0, /* ... */],
+      "y": [163.3, 165.14, 167.11, 169.02, /* ... */],
+      "type": "scatter",
+      "mode": "lines",
+      "name": "R1/2 T set [°C]"
+    },
+    {
+      "x": [0.0, 1.0, 2.0, 3.0, /* ... */],
+      "y": [156.20, 158.31, 160.54, 162.84, /* ... */],
+      "type": "scatter",
+      "mode": "lines",
+      "name": "R1/2 T read [°C]"
+    }
+  ],
+  "layout": {
+    "title": "Temperature Data - 24_06_10 13_21_12",
+    "xaxis": {
+      "title": "Time (minutes)"
+    },
+    "yaxis": {
+      "title": "Temperature (°C) / Power (%)"
+    }
+  }
+}
+```
+
+##### Stage Plot Data Endpoint
+
+```
+GET /api/experiment/<experiment_name>/stage/<stage_num>?type=<plot_type>
+```
+
+Returns the Plotly JSON data for a specific stage and plot type.
+
+**Parameters:**
+- `experiment_name`: Name of the experiment (URL-encoded if it contains spaces)
+- `stage_num`: Stage number (integer)
+- `type`: Plot type (one of: temperature, multipoint, saturator, pressure, flow, outlet)
+
+**Response Example (abbreviated):**
+
+```json
+{
+  "data": [
+    {
+      "x": [0.0, 1.0, 2.0, 3.0, /* ... */],
+      "y": [163.3, 165.14, 167.11, 169.02, /* ... */],
+      "type": "scatter",
+      "mode": "lines",
+      "name": "R1/2 T set [°C]"
+    },
+    {
+      "x": [0.0, 1.0, 2.0, 3.0, /* ... */],
+      "y": [156.20, 158.31, 160.54, 162.84, /* ... */],
+      "type": "scatter",
+      "mode": "lines",
+      "name": "R1/2 T read [°C]"
+    }
+  ],
+  "layout": {
+    "title": "Stage 2 - Temperature",
+    "xaxis": {
+      "title": "Time (minutes)"
+    },
+    "yaxis": {
+      "title": "Temperature (°C) / Power (%)"
+    }
+  }
+}
+```
+
+##### Process Experiment Endpoint
 
 ```
 GET /api/process/<experiment_name>
 ```
 
-Processes or reprocesses an experiment.
+Processes the specified experiment data file. This endpoint finds the matching file in the uploads folder and processes it.
 
-#### Get Overall Plot Data
+**Parameters:**
+- `experiment_name`: Name of the experiment to process (URL-encoded if it contains spaces)
 
-```
-GET /api/experiment/<experiment_name>/overall
-```
+**Response Example:**
 
-Returns the overall plot data for an experiment.
-
-#### Get Category Plot Data
-
-```
-GET /api/experiment/<experiment_name>/category/<category>
-```
-
-Returns the plot data for a specific category.
-
-#### Get Available Categories
-
-```
-GET /api/experiment/<experiment_name>/categories
+```json
+{
+  "success": true,
+  "message": "Processed 1 files for experiment '24_06_10 13_21_12'",
+  "processed_files": ["24_06_10 13_21_12.txt"]
+}
 ```
 
-Returns a list of available plot categories for an experiment.
-
-#### Get DateTime Vector Visualization
-
-```
-GET /api/experiment/<experiment_name>/datetime
-```
-
-Returns the datetime vector visualization data.
-
-#### Get Stage Plot Data
-
-```
-GET /api/experiment/<experiment_name>/stage/<stage_num>
-```
-
-Returns the plot data for a specific stage.
-
-#### Process All Files
+##### Process All Experiments Endpoint
 
 ```
 GET /api/process-all
 ```
 
-Processes all files in the uploads folder.
+Processes all experiment data files in the uploads folder.
 
-#### Example API Usage with Python
+**Response Example:**
+
+```json
+{
+  "success": true,
+  "message": "Processed 3 files with 0 errors",
+  "processed_files": [
+    "24_06_10 13_21_12.txt",
+    "25_02_28 14_02_06 Exp 011_Blak_Silcotek_New_SiO2_TC_QRZ.txt",
+    "25_03_21 09_35_25 Exp 012_2682.txt"
+  ],
+  "errors": []
+}
+```
+
+##### Visualize Experiment Endpoint
+
+```
+GET /api/visualize/<experiment_name>
+```
+
+Generates Plotly visualizations for the specified experiment. This is useful when you need to regenerate visualizations after updating the experiment data.
+
+**Parameters:**
+- `experiment_name`: Name of the experiment (URL-encoded if it contains spaces)
+
+**Response Example:**
+
+```json
+{
+  "success": true,
+  "message": "Visualizations created for 1 stages"
+}
+```
+
+##### Fix JSON Files Endpoint
+
+```
+GET /api/experiment/<experiment_name>/fix-json
+```
+
+Fixes JSON files with NaN values for a specific experiment, replacing them with null values.
+
+**Parameters:**
+- `experiment_name`: Name of the experiment (URL-encoded if it contains spaces)
+
+**Response Example:**
+
+```json
+{
+  "success": true,
+  "message": "Successfully fixed JSON files for experiment '24_06_10 13_21_12'"
+}
+```
+
+#### Data Formats
+
+The API uses the following data formats:
+
+1. **Experiment List Format**: An array of experiment objects, each containing metadata about the experiment.
+2. **Plotly JSON Format**: A JSON object that follows the Plotly.js format with `data` (traces) and `layout` sections.
+3. **Process Response Format**: A JSON object with success status, message, and processed files information.
+
+##### Plotly JSON Structure
+
+The Plotly JSON format is designed to be directly usable by Plotly.js on the frontend:
+
+```json
+{
+  "metadata": {
+    "title": "Title of the plot",
+    "processed_at": "Timestamp when the plot was generated",
+    "total_stages": "Number of stages in the experiment"
+  },
+  "data": [
+    {
+      "x": [array of x values (time in minutes)],
+      "y": [array of y values (measurements)],
+      "type": "scatter",
+      "mode": "lines",
+      "name": "Name of the trace (column name)"
+    },
+    // Additional traces for other columns
+  ],
+  "layout": {
+    "title": "Plot title",
+    "xaxis": {
+      "title": "X-axis title (Time (minutes))"
+    },
+    "yaxis": {
+      "title": "Y-axis title (units)"
+    },
+    "template": "plotly_dark",
+    "paper_bgcolor": "#1e1e1e",
+    "plot_bgcolor": "#2d2d2d",
+    "font": {"color": "#e0e0e0"}
+  }
+}
+```
+
+#### Error Handling
+
+The API returns appropriate HTTP status codes and error messages when something goes wrong:
+
+- **400 Bad Request**: When the request parameters are invalid
+- **404 Not Found**: When the requested experiment or plot type is not found
+- **500 Internal Server Error**: When an unexpected error occurs during processing
+
+Error responses follow this format:
+
+```json
+{
+  "error": "Error message describing what went wrong",
+  "available_types": ["List of available plot types (for invalid plot type errors)"]
+}
+```
+
+#### API Usage Examples
+
+##### Python Example: Processing All Experiments and Retrieving Plot Data
 
 ```python
 import requests
 import json
+import matplotlib.pyplot as plt
+import plotly.io as pio
+import plotly.graph_objects as go
 
-# Get list of all experiments
-response = requests.get("http://localhost:8085/api/experiments")
-experiments = response.json()
-print(f"Found {len(experiments)} experiments")
+# Base URL for the API
+base_url = "http://localhost:8080"
 
-# Process a specific experiment
-experiment_name = "Exp012_Parameters_R151_2682"
-response = requests.get(f"http://localhost:8085/api/process/{experiment_name}")
+# Process all experiments
+response = requests.get(f"{base_url}/api/process-all")
 result = response.json()
 print(f"Processing result: {result['message']}")
 
-# Get temperature plot data
-response = requests.get(f"http://localhost:8085/api/experiment/{experiment_name}/category/temperature")
+# Get list of experiments
+response = requests.get(f"{base_url}/api/experiments")
+experiments = response.json()
+print(f"Found {len(experiments)} experiments")
+
+# Get temperature plot data for the first experiment
+experiment_name = experiments[0]['name']
+response = requests.get(f"{base_url}/api/experiment/{experiment_name}/overall?type=temperature")
 plot_data = response.json()
+
+# Create Plotly figure
+fig = go.Figure()
+for trace in plot_data['data']:
+    fig.add_trace(go.Scatter(x=trace['x'], y=trace['y'], name=trace['name'], mode=trace['mode']))
+
+fig.update_layout(
+    title=plot_data['metadata']['title'],
+    xaxis_title="Time (minutes)",
+    yaxis_title=plot_data['layout']['yaxis']['title']
+)
+
+# Show the figure
+fig.show()
 
 # Save plot data to file
 with open(f"{experiment_name}_temperature.json", "w") as f:
     json.dump(plot_data, f, indent=2)
 ```
 
+##### JavaScript Example: Fetching and Displaying a Plot
+
+```javascript
+// Base URL for the API
+const baseUrl = "http://localhost:8080";
+
+// Function to fetch and display a plot
+async function fetchAndDisplayPlot(experimentName, plotType = 'temperature') {
+  try {
+    // Fetch the plot data
+    const response = await fetch(`${baseUrl}/api/experiment/${encodeURIComponent(experimentName)}/overall?type=${plotType}`);
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Error: ${errorData.error}`);
+    }
+    
+    const plotData = await response.json();
+    
+    // Create the plot
+    Plotly.newPlot('plot-container', plotData.data, plotData.layout);
+    
+  } catch (error) {
+    console.error('Failed to fetch plot data:', error);
+    document.getElementById('plot-container').innerHTML = `<div class="error">${error.message}</div>`;
+  }
+}
+
+// Example usage
+document.addEventListener('DOMContentLoaded', () => {
+  const experimentSelector = document.getElementById('experiment-selector');
+  const plotTypeSelector = document.getElementById('plot-type-selector');
+  
+  // Populate the experiment selector
+  fetch(`${baseUrl}/api/experiments`)
+    .then(response => response.json())
+    .then(experiments => {
+      experiments.forEach(experiment => {
+        const option = document.createElement('option');
+        option.value = experiment.name;
+        option.textContent = experiment.name;
+        experimentSelector.appendChild(option);
+      });
+      
+      // Fetch the first experiment plot if available
+      if (experiments.length > 0) {
+        fetchAndDisplayPlot(experiments[0].name);
+      }
+    });
+  
+  // Event listeners for selectors
+  experimentSelector.addEventListener('change', () => {
+    fetchAndDisplayPlot(experimentSelector.value, plotTypeSelector.value);
+  });
+  
+  plotTypeSelector.addEventListener('change', () => {
+    fetchAndDisplayPlot(experimentSelector.value, plotTypeSelector.value);
+  });
+});
+```
+
 ## Data Processing
+
+The NH3 Cracking Processor and Visualizer implements a sophisticated data processing pipeline that transforms raw experimental data into structured, analyzable datasets and interactive visualizations.
 
 ### Input Data Format
 
-The processor expects tab-separated text files with:
+The processor expects tab-separated text files (.txt) with the following structure:
 
-- First column: Date/time information in various formats
-- Second column: Stage identifier (integer values to identify different experimental stages)
-- Remaining columns: Numeric measurement data
+1. **First column**: Date/time information in various formats (e.g., DD/MM/YY HH:MM:SS)
+2. **Second column**: Stage identifier (integer values to identify different experimental stages)
+3. **Remaining columns**: Numeric measurement data for various parameters
 
-Example file format:
+Example of expected input format:
+
 ```
-DateTime            Stage    Temperature    Pressure    Flow
-01/05/24 12:34:56    1        450.2        25.3        380.5
-01/05/24 12:35:56    1        451.3        25.4        380.2
-01/05/24 12:36:56    1        450.8        25.2        380.4
-01/05/24 12:37:56    2        460.1        26.0        381.0
-01/05/24 12:38:56    2        461.5        26.1        381.2
+DateTime            Stage    R1/2 T set [°C]    R1/2 T read [°C]    Pressure [bar]    Flow [Nml/min]
+01/06/24 12:34:56    1        450.2              451.3               25.3              380.5
+01/06/24 12:35:56    1        451.3              452.4               25.4              380.2
+01/06/24 12:36:56    1        450.8              451.9               25.2              380.4
+01/06/24 12:37:56    2        460.1              461.2               26.0              381.0
+01/06/24 12:38:56    2        461.5              462.6               26.1              381.2
 ```
+
+The application supports multiple date/time formats:
+- DD/MM/YY HH:MM:SS
+- YYYY-MM-DD HH:MM:SS
+- DD/MM/YYYY HH:MM:SS
+- MM/DD/YY HH:MM:SS
+- MM/DD/YYYY HH:MM:SS
+
+And multiple file encodings:
+- UTF-8
+- Latin1 (ISO-8859-1)
+- CP1252
+- ISO-8859-1
 
 ### Processing Pipeline
 
 The data processing pipeline consists of the following steps:
 
-1. **File Reading**: Read the tab-separated file with automatic encoding detection
-2. **Time Vector Creation**: Convert datetime strings to a consistent time vector in minutes
-3. **Stage Detection**: Identify different experimental stages based on the Stage column
-4. **Data Interpolation**: Perform cubic interpolation to create a consistent time grid
-5. **Column Mapping**: Analyze and categorize columns based on their content
-6. **Data Export**: Export processed data in CSV and JSON formats
-7. **Visualization Generation**: Create interactive visualizations for different data views
+1. **File Reading**: The application reads the tab-separated file using pandas, automatically detecting the correct encoding.
 
-Here's a code example showing the core processing pipeline:
+   ```python
+   def read_data_file(self, filename):
+       filepath = os.path.join(self.input_folder, filename)
+       
+       # Try multiple encodings
+       encodings = ['utf-8', 'latin1', 'cp1252', 'ISO-8859-1']
+       
+       for encoding in encodings:
+           try:
+               # Read the file with tab separator
+               df = pd.read_csv(filepath, sep='\t', encoding=encoding)
+               return df
+           except UnicodeDecodeError:
+               continue
+   ```
 
-```python
-from Main_Web_ProcessorNH3Crack import ExperimentalDataProcessor
+2. **Time Vector Creation**: The application converts datetime strings to a consistent time vector in minutes.
 
-# Initialize processor
-processor = ExperimentalDataProcessor(
-    input_folder="uploads",
-    output_folder="Reports"
-)
+3. **Stage Detection**: The application identifies different experimental stages based on the Stage column.
 
-# Process a file
-processor.process_file("your_data_file.txt")
-```
+4. **Data Interpolation**: The application performs cubic interpolation to create a consistent time grid with 1-minute intervals.
+
+5. **Data Organization**: The application organizes the data into different categories (temperature, pressure, flow, etc.).
+
+6. **Plotly JSON Generation**: The application generates Plotly JSON files for different data views.
+
+7. **Data Export**: The application exports processed data in CSV and JSON formats.
 
 ### Time Vector Handling
 
-Time vector handling is a critical aspect of the processing pipeline. The application converts various datetime formats into a consistent relative time vector in minutes. This is done in the `create_time_vector` method:
+Time vector handling is a critical aspect of the processing pipeline. The application converts various datetime formats into a consistent relative time vector in minutes, making it easier to analyze and visualize the data.
 
 ```python
 def create_time_vector(self, df):
@@ -380,9 +717,9 @@ def create_time_vector(self, df):
         '%m/%d/%Y %H:%M:%S',  # MM/DD/YYYY HH:MM:SS
     ]
     
-    # Try to parse datetime using different formats
     for date_format in date_formats:
         try:
+            # Convert datetime strings to datetime objects
             df[datetime_col] = pd.to_datetime(df[datetime_col], format=date_format)
             break
         except ValueError:
@@ -391,8 +728,6 @@ def create_time_vector(self, df):
     # Create time vector in minutes from start
     start_time = df[datetime_col].min()
     df['Time_Minutes'] = (df[datetime_col] - start_time).dt.total_seconds() / 60
-    
-    return df
 ```
 
 If datetime parsing fails, the application creates a sequential time vector as a fallback:
@@ -404,7 +739,7 @@ df['Time_Minutes'] = np.arange(len(df))
 
 ### Stage Detection
 
-Experimental stages are detected using the second column (typically named 'Stage'). If this column exists, the data is grouped by stage values:
+The application detects different experimental stages by examining the second column of the input data, which is expected to contain stage identifiers (integer values). This allows the application to separate the data into different stages for analysis and visualization.
 
 ```python
 def slice_by_stages(self, df):
@@ -428,9 +763,11 @@ def slice_by_stages(self, df):
     return stages
 ```
 
+Each stage is stored as a separate dataset and processed independently, allowing for stage-specific analysis and visualization.
+
 ### Data Interpolation
 
-To ensure a consistent time grid across all measurements, the application performs cubic interpolation for all numeric columns. This is done in the `perform_interpolation` method:
+To ensure a consistent time grid across all measurements, the application performs cubic interpolation for all numeric columns. This is particularly important for creating smooth visualizations and for comparing data across different stages.
 
 ```python
 def perform_interpolation(self, df, target_interval_minutes=1):
@@ -460,137 +797,548 @@ def perform_interpolation(self, df, target_interval_minutes=1):
             interpolated_df[col] = f(target_time)
         else:
             interpolated_df[col] = np.nan
-    
-    # Handle Stage column separately (use nearest neighbor)
-    if 'Stage' in df.columns:
-        mask = ~(df['Time_Minutes'].isna() | df['Stage'].isna())
-        if mask.sum() > 0:
-            x = df.loc[mask, 'Time_Minutes'].values
-            y = df.loc[mask, 'Stage'].values
-            f_stage = interp1d(x, y, kind='nearest', bounds_error=False, fill_value='extrapolate')
-            interpolated_df['Stage'] = f_stage(target_time).astype(int)
-        else:
-            interpolated_df['Stage'] = 0
-    
-    return interpolated_df
 ```
+
+The application uses cubic interpolation when there are at least 4 data points, which provides smooth curves. For the Stage column, the application uses nearest-neighbor interpolation to maintain the integrity of the stage identifiers.
+
+### Plotly JSON Generation
+
+The application generates JSON files that follow the Plotly.js format, making it easy to create interactive visualizations on the web interface. The JSON files contain both the data (traces) and the layout information.
+
+```python
+def create_stage_plotly_json(self, stage_df, stage_num, base_filename, output_dir):
+    """Generate Plotly JSON files for a specific stage"""
+    
+    # Process each plot group
+    for group_key, group_config in config.STAGE_PLOT_GROUPS.items():
+        # Get the plot title and filename
+        title = group_config['title'].format(stage_num=stage_num)
+        filename = group_config['filename'].format(stage_num=stage_num)
+        
+        # Get columns to include in this plot
+        if 'column_pattern' in group_config:
+            # For multipoint thermocouples, find columns matching the pattern
+            pattern = group_config['column_pattern']
+            plot_cols = [col for col in stage_df.columns if pattern in col]
+        else:
+            # For regular plots, use the specified columns
+            plot_cols = [col for col in group_config['columns'] if col in stage_df.columns]
+        
+        if not plot_cols:
+            continue  # Skip if no matching columns
+        
+        # Create traces for each column
+        traces = []
+        for i, col in enumerate(plot_cols):
+            color = config.PLOT_COLORS[i % len(config.PLOT_COLORS)]
+            trace = {
+                'x': stage_df['Time_Minutes'].tolist(),
+                'y': stage_df[col].tolist(),
+                'type': 'scatter',
+                'mode': 'lines',
+                'name': col,
+                'line': {'color': color, 'width': 2}
+            }
+            traces.append(trace)
+        
+        # Create layout
+        layout = {
+            'title': title,
+            'xaxis': {
+                'title': 'Time (minutes)',
+                'gridcolor': config.PLOTLY_GRID_COLOR
+            },
+            'yaxis': {
+                'title': group_config['y_axis_title'],
+                'gridcolor': config.PLOTLY_GRID_COLOR
+            },
+            'template': config.PLOTLY_THEME,
+            'paper_bgcolor': config.PLOTLY_PAPER_BGCOLOR,
+            'plot_bgcolor': config.PLOTLY_PLOT_BGCOLOR,
+            'font': {'color': config.PLOTLY_FONT_COLOR},
+            'hovermode': 'closest',
+            'legend': {
+                'orientation': 'v',
+                'bgcolor': 'rgba(0,0,0,0.5)',
+                'bordercolor': 'rgba(255,255,255,0.2)',
+                'borderwidth': 1
+            }
+        }
+        
+        # Create Plotly data
+        plotly_data = {
+            'data': traces,
+            'layout': layout
+        }
+        
+        # Save to file
+        output_path = os.path.join(output_dir, filename)
+        with open(output_path, 'w') as f:
+            json.dump(plotly_data, f, indent=2, cls=CustomJSONEncoder)
+```
+
+For the overall experiment plots, the application combines data from all stages and generates a comprehensive visualization:
+
+```python
+def create_plotly_json(self, stages, base_filename, timestamp, output_dir):
+    """Generate Plotly JSON files for the overall experiment"""
+    
+    # Create plots for different categories
+    self.create_category_plotly_jsons(stages, base_filename, timestamp, output_dir)
+```
+
+The `create_category_plotly_jsons` method generates specialized plots for different data categories (temperature, pressure, flow, etc.) based on the configuration in `config.py`.
+
+### Category-Based Data Organization
+
+The application organizes the data into different categories based on the column names and patterns. This makes it easier to analyze and visualize related measurements together.
+
+Categories defined in `config.py`:
+
+```python
+DATA_CATEGORIES = {
+    "temperature": {
+        "title": "Temperature Measurements",
+        "y_axis_title": "Temperature (°C) / Power (%)",
+        "columns": [
+            "R1/2 T set [°C]", 
+            "R1/2 T read [°C]", 
+            "R1/2 T power [%]", 
+            "Saturator T read [°C]"
+        ],
+        "filename_suffix": "temp_plotly_data.json"
+    },
+    "multipoint": {
+        "title": "Multipoint Temperature Measurements",
+        "y_axis_title": "Temperature (°C)",
+        "column_pattern": "R-1/2 T",
+        "filename_suffix": "multipoint_temp_plotly_data.json"
+    },
+    "saturator": {
+        "title": "Saturator Temperature",
+        "y_axis_title": "Temperature (°C)",
+        "columns": ["Saturator T read [°C]"],
+        "filename_suffix": "saturator_temp_plotly_data.json"
+    },
+    "pressure": {
+        "title": "Pressure Measurements",
+        "y_axis_title": "Pressure (bar)",
+        "columns": [
+            "Pressure SETPOINT [bar]", 
+            "Pressure PIC [bar]", 
+            "Pressure reading line [bar]",
+            "Pressure reading R1/2 IN [bar]", 
+            "Pressure reading R1/2 OUT [bar]", 
+            "High pressure NH3 line [bar]"
+        ],
+        "filename_suffix": "pressure_plotly_data.json"
+    },
+    "flow": {
+        "title": "Flow Measurements",
+        "y_axis_title": "Flow (Nml/min) / Concentration (%)",
+        "columns": [
+            "NH3 Actual Set-Point [Nml/min]", 
+            "H2 Actual Flow [Nml/min]", 
+            "Tot flow calc [Nml/min]",
+            "NH3 in %", 
+            "Inert in %", 
+            "H2O in %"
+        ],
+        "filename_suffix": "flow_plotly_data.json"
+    },
+    "outlet": {
+        "title": "Outlet Stream Composition",
+        "y_axis_title": "Composition (%)",
+        "columns": [
+            "NH3 out [%]", 
+            "H2 out [%]", 
+            "H2O out [%]"
+        ],
+        "filename_suffix": "outlet_plotly_data.json"
+    }
+}
+```
+
+For each category, the application generates a separate Plotly JSON file with the appropriate columns and layout.
+
+### NaN Handling in JSON
+
+JSON does not support NaN (Not a Number) values, which can cause issues when the data contains missing or invalid measurements. The application uses a custom JSON encoder to handle NaN values:
+
+```python
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.integer, np.floating, np.bool_)):
+            return obj.item()
+        if pd.isna(obj):
+            return None
+        if np.isnan(obj):
+            return None
+        if np.isinf(obj):
+            return None
+        return super().default(obj)
+```
+
+This encoder converts NaN values to `null`, which is a valid JSON value and can be properly handled by JavaScript.
+
+### Full Processing Example
+
+Here's an example of the complete processing flow for a single file:
+
+```python
+from Main_Web_ProcessorNH3Crack import ExperimentalDataProcessor
+
+# Initialize processor
+processor = ExperimentalDataProcessor(
+    input_folder="uploads",
+    output_folder="Reports"
+)
+
+# Process a file
+processor.process_file("24_06_10 13_21_12.txt")
+```
+
+This will:
+1. Read the file from the uploads folder
+2. Create a time vector in minutes
+3. Detect stages in the data
+4. Perform cubic interpolation for all numeric columns
+5. Generate separate datasets for each stage
+6. Create Plotly JSON files for each stage and data category
+7. Save all processed data to the Reports folder
 
 ## Visualization
 
+The NH3 Cracking Processor and Visualizer uses Plotly.js to create interactive, publication-quality visualizations of experimental data. These visualizations allow researchers to explore and analyze their data in detail.
+
 ### Plotly Integration
 
-The application uses Plotly to create interactive visualizations. Plotly data is generated in JSON format and served to the frontend through the API. The JSON format includes:
+[Plotly.js](https://plotly.com/javascript/) is a high-level, declarative charting library that provides a wide range of interactive visualizations. The application uses Plotly.js to create interactive plots that allow users to:
 
-- `data`: Array of trace objects (each representing a data series)
-- `layout`: Object defining the plot layout, axes, labels, etc.
+- Zoom in/out on specific regions
+- Pan across the data
+- Hover over data points to see exact values
+- Toggle visibility of data series
+- Download plots as PNG images
 
-Here's a simplified example of how Plotly data is generated:
+The integration works as follows:
 
-```python
-def create_stage_plotly_json(self, stage_df, stage_num, base_filename, output_path):
-    # Create title
-    title = f'Stage {stage_num} - {base_filename}'
-    
-    # Get numeric columns (excluding Time_Minutes and Stage)
-    numeric_cols = stage_df.select_dtypes(include=[np.number]).columns.tolist()
-    exclude_cols = ['Time_Minutes', 'Stage', 'Stage_ID']
-    plot_cols = [col for col in numeric_cols if col not in exclude_cols]
-    
-    # Create traces
-    traces = []
-    for col in plot_cols:
-        trace = {
-            'x': stage_df['Time_Minutes'].tolist(),
-            'y': stage_df[col].tolist(),
-            'type': 'scatter',
-            'mode': 'lines',
-            'name': col
-        }
-        traces.append(trace)
-    
-    # Create layout
-    layout = {
-        'title': title,
-        'xaxis': {'title': 'Time (minutes)'},
-        'yaxis': {'title': 'Values'},
-        'hovermode': 'closest',
-        'template': 'plotly_dark',
-        'paper_bgcolor': '#1e1e1e',
-        'plot_bgcolor': '#2d2d2d',
-        'font': {'color': '#e0e0e0'}
-    }
-    
-    # Create Plotly data
-    plotly_data = {
-        'data': traces,
-        'layout': layout
-    }
-    
-    # Save to file
-    with open(output_path, 'w') as f:
-        json.dump(plotly_data, f, indent=2)
+1. The backend (Python) generates Plotly-compatible JSON files for different data views
+2. The frontend (JavaScript) loads these JSON files via the API
+3. Plotly.js renders the JSON data as interactive visualizations
+
+Example of the JavaScript code used to render Plotly visualizations:
+
+```javascript
+function renderPlot(plotData, containerId) {
+  // Create Plotly plot
+  Plotly.newPlot(containerId, plotData.data, plotData.layout, {
+    responsive: true,
+    displayModeBar: true,
+    modeBarButtonsToRemove: ['lasso2d', 'select2d']
+  });
+}
+
+// Load plot data from API
+async function loadPlotData(experimentName, plotType = 'temperature') {
+  const response = await fetch(`/api/experiment/${encodeURIComponent(experimentName)}/overall?type=${plotType}`);
+  const plotData = await response.json();
+  renderPlot(plotData, 'plot-container');
+}
 ```
 
 ### Data Categories
 
-The application categorizes measurements into logical groups:
+The application organizes measurements into logical categories to facilitate analysis and visualization. Each category focuses on a specific aspect of the experiment:
 
-- **Temperature**: Main temperature measurements (R1/2 T read, Saturator T read, etc.)
-- **Multipoint Temperature**: Temperature measurements at multiple points
-- **Saturator Temperature**: Specialized view for saturator temperature
-- **Pressure**: Pressure measurements across different parts of the system
-- **Flow**: Flow rates and related measurements
-- **Outlet Composition**: Composition measurements of the outlet stream
+#### Temperature Category
 
-These categories are defined in the `create_category_plotly_jsons` method:
+![Temperature Plot](https://via.placeholder.com/800x400?text=Temperature+Plot)
 
-```python
-def create_category_plotly_jsons(self, stages, base_filename, timestamp, exp_dir):
-    # Define data categories with their column patterns
-    categories = {
-        'temperature': {
-            'title': 'Temperature Measurements',
-            'y_axis_title': 'Temperature (°C)',
-            'columns': [
-                "R1/2 T set [°C]", 
-                "R1/2 T read [°C]", 
-                "R1/2 T power [%]", 
-                "Saturator T read [°C]"
-            ]
-        },
-        'pressure': {
-            'title': 'Pressure Measurements',
-            'y_axis_title': 'Pressure (bar)',
-            'columns': [
-                "Pressure SETPOINT [bar]", 
-                "Pressure PIC [bar]", 
-                "Pressure reading line [bar]", 
-                # ... other pressure columns
-            ]
-        },
-        # ... other categories
+The temperature category includes:
+- R1/2 T set [°C]: Temperature setpoint
+- R1/2 T read [°C]: Actual temperature reading
+- R1/2 T power [%]: Power percentage
+- Saturator T read [°C]: Saturator temperature
+
+```javascript
+// Example of temperature data structure
+{
+  "data": [
+    {
+      "x": [0, 1, 2, ...],  // Time in minutes
+      "y": [450.2, 451.3, 450.8, ...],  // Temperature setpoint values
+      "type": "scatter",
+      "mode": "lines",
+      "name": "R1/2 T set [°C]"
+    },
+    {
+      "x": [0, 1, 2, ...],
+      "y": [449.5, 450.8, 450.2, ...],
+      "type": "scatter",
+      "mode": "lines",
+      "name": "R1/2 T read [°C]"
     }
+  ]
+}
 ```
+
+#### Multipoint Temperature Category
+
+![Multipoint Temperature Plot](https://via.placeholder.com/800x400?text=Multipoint+Temperature+Plot)
+
+The multipoint temperature category includes temperature measurements at multiple points, with column names matching the pattern "R-1/2 T".
+
+#### Pressure Category
+
+![Pressure Plot](https://via.placeholder.com/800x400?text=Pressure+Plot)
+
+The pressure category includes:
+- Pressure SETPOINT [bar]: Pressure setpoint
+- Pressure PIC [bar]: Pressure controller reading
+- Pressure reading line [bar]: Line pressure
+- Pressure reading R1/2 IN [bar]: Reactor inlet pressure
+- Pressure reading R1/2 OUT [bar]: Reactor outlet pressure
+- High pressure NH3 line [bar]: Ammonia line pressure
+
+#### Flow Category
+
+![Flow Plot](https://via.placeholder.com/800x400?text=Flow+Plot)
+
+The flow category includes:
+- NH3 Actual Set-Point [Nml/min]: Ammonia flow setpoint
+- H2 Actual Flow [Nml/min]: Hydrogen flow
+- Tot flow calc [Nml/min]: Total calculated flow
+- NH3 in %: Ammonia inlet concentration
+- Inert in %: Inert gas concentration
+- H2O in %: Water concentration
+
+#### Outlet Composition Category
+
+![Outlet Composition Plot](https://via.placeholder.com/800x400?text=Outlet+Composition+Plot)
+
+The outlet composition category includes:
+- NH3 out [%]: Ammonia outlet concentration
+- H2 out [%]: Hydrogen outlet concentration
+- H2O out [%]: Water outlet concentration
 
 ### Visualization Types
 
 The application provides several types of visualizations:
 
-1. **Overall Plot**: Shows all measurements across all stages
-2. **Category Plots**: Shows measurements grouped by category
-3. **Stage Plots**: Shows all measurements for a specific stage
-4. **DateTime Vector Visualization**: Shows measurements with precise time positioning
+#### 1. Overall Experiment Plots
 
-Each visualization type can be customized in the web interface.
+These plots show data across all stages of the experiment, providing a comprehensive view of the entire experiment. Each data category has its own overall plot.
+
+Example API call:
+```
+GET /api/experiment/24_06_10 13_21_12/overall?type=temperature
+```
+
+#### 2. Stage-Specific Plots
+
+These plots focus on a specific stage of the experiment, allowing for detailed analysis of each stage. Each data category has stage-specific plots.
+
+Example API call:
+```
+GET /api/experiment/24_06_10 13_21_12/stage/2?type=temperature
+```
+
+#### 3. Category-Based Plots
+
+These plots organize data by category (temperature, pressure, flow, etc.), allowing for focused analysis of specific aspects of the experiment.
+
+Example: Temperature category plot showing temperature setpoint, actual temperature, and power percentage.
+
+#### 4. Customized Plots
+
+The web interface allows users to customize visualizations in real-time:
+
+- **Plot Type**: Switch between line plots and scatter plots
+- **Theme**: Choose between dark and light themes
+- **Visibility**: Toggle the visibility of specific data series
+- **Zoom Level**: Zoom in on specific time periods
+- **Data Range**: Focus on specific data ranges
+
+### Interactive Plot Features
+
+The interactive plots provide several advanced features:
+
+#### Hover Information
+
+Hover over any data point to see exact values:
+- X value (time in minutes)
+- Y value (measurement)
+- Series name
+
+#### Zoom and Pan
+
+- Zoom in on specific regions by clicking and dragging
+- Double-click to reset the zoom
+- Click and drag the plot to pan
+
+#### Plot Controls
+
+The modebar provides additional controls:
+- Download plot as PNG
+- Zoom in/out
+- Pan
+- Reset axes
+- Toggle spike lines
+- Toggle hover mode
+
+#### Responsive Design
+
+The plots are designed to be responsive, adapting to different screen sizes and devices.
+
+### Dark Mode Optimization
+
+The plots are optimized for dark mode, with a dark background and high-contrast colors for better visibility in low-light environments.
+
+Default theme settings:
+```python
+PLOTLY_THEME = "plotly_dark"
+PLOTLY_PAPER_BGCOLOR = "#1e1e1e"
+PLOTLY_PLOT_BGCOLOR = "#2d2d2d"
+PLOTLY_FONT_COLOR = "#e0e0e0"
+PLOTLY_GRID_COLOR = "rgba(255, 255, 255, 0.1)"
+```
+
+### Plot Generation Process
+
+The application generates plots through the following process:
+
+1. **Data Preparation**: The processed data is organized by stage and category
+2. **Trace Creation**: For each data column, a trace (line or scatter) is created
+3. **Layout Configuration**: The plot layout is configured with appropriate titles, axes, and styling
+4. **JSON Generation**: The plot data and layout are converted to JSON format
+5. **Frontend Rendering**: The JSON data is loaded by the frontend and rendered using Plotly.js
+
+Example of the Python code used to generate plots:
+
+```python
+def create_plotly_json(self, stages, base_filename, timestamp, output_dir):
+    """Generate Plotly JSON files for the overall experiment"""
+    
+    # Create plots for different categories
+    self.create_category_plotly_jsons(stages, base_filename, timestamp, output_dir)
+```
 
 ### Customization Options
 
-The web interface provides several options for customizing visualizations:
+The visualizations can be customized in several ways:
 
-- **Plot Type**: Line or scatter
-- **Theme**: Dark or light
-- **Stage Visibility**: Show all stages or specific stages only
-- **X-Axis Type**: Relative time or date/time
+#### Backend Customization
+
+Edit `config.py` to change:
+- Plot colors
+- Theme settings
+- Data categories
+- Column mappings
+
+#### Frontend Customization
+
+The web interface provides controls to:
+- Switch between line and scatter plots
+- Change the theme
+- Toggle series visibility
+- Focus on specific time periods
+
+Example:
+```javascript
+function updatePlotType(plotType) {
+    // Update trace modes based on plot type
+    const updatedData = plotData.data.map(trace => ({
+        ...trace,
+        mode: plotType === 'line' ? 'lines' : 'markers'
+    }));
+    
+    Plotly.react('plot-container', updatedData, plotData.layout);
+}
+
+document.getElementById('plot-type-selector').addEventListener('change', (event) => {
+    updatePlotType(event.target.value);
+});
+```
+
+### Export Options
+
+The interactive plots can be exported in several formats:
+
+- **PNG**: High-quality raster image
+- **SVG**: Scalable vector graphic
+- **JSON**: Raw plot data and layout for further processing
+
+To export a plot as PNG:
+```javascript
+document.getElementById('export-png').addEventListener('click', () => {
+    Plotly.downloadImage('plot-container', {
+        format: 'png',
+        filename: 'experiment_plot',
+        width: 1200,
+        height: 800
+    });
+});
+```
+
+### Advanced Visualization Techniques
+
+#### Multi-Axis Plots
+
+For comparing measurements with different units and scales, you can create multi-axis plots:
+
+```javascript
+// Create a plot with multiple y-axes
+const layout = {
+    title: 'Temperature and Pressure',
+    yaxis: {
+        title: 'Temperature (°C)',
+        side: 'left'
+    },
+    yaxis2: {
+        title: 'Pressure (bar)',
+        overlaying: 'y',
+        side: 'right'
+    }
+};
+
+// Configure traces to use different axes
+const temperatureTrace = {
+    y: temperatureData,
+    name: 'Temperature',
+    yaxis: 'y'
+};
+
+const pressureTrace = {
+    y: pressureData,
+    name: 'Pressure',
+    yaxis: 'y2'
+};
+
+Plotly.newPlot('multi-axis-plot', [temperatureTrace, pressureTrace], layout);
+```
+
+#### Annotation and Highlighting
+
+You can add annotations and highlighting to emphasize important aspects of the data:
+
+```javascript
+// Add annotations
+const layout = {
+    annotations: [
+        {
+            x: 45,  // Time in minutes
+            y: 450,  // Value
+            text: 'Peak Temperature',
+            showarrow: true,
+            arrowhead: 2,
+            arrowsize: 1,
+            arrowwidth: 2,
+            arrowcolor: '#ff0000'
+        }
+    ]
+};
+```
 
 ## Directory Structure
 
@@ -617,8 +1365,8 @@ NH3CrackProcessor/
 ├── Reports/                # Generated reports and visualizations
 │   └── [experiment_name]/  # Each experiment has its own directory
 │       ├── [experiment_name]_temp_plotly_data.json      # Temperature plot data
-│       ├── [experiment_name]_multipoint_plotly_data.json # Multipoint temperature data
-│       ├── [experiment_name]_saturator_plotly_data.json # Saturator temperature data
+│       ├── [experiment_name]_multipoint_temp_plotly_data.json # Multipoint temperature data
+│       ├── [experiment_name]_saturator_temp_plotly_data.json # Saturator temperature data
 │       ├── [experiment_name]_pressure_plotly_data.json  # Pressure measurements data
 │       ├── [experiment_name]_flow_plotly_data.json      # Flow measurements data
 │       ├── [experiment_name]_outlet_plotly_data.json    # Outlet composition data
@@ -668,54 +1416,61 @@ This organization separates concerns and follows the principle of having a clear
 
 ## Output Data Structure
 
-The processor generates a hierarchical folder structure to organize the processed data:
+The NH3 Cracking Processor and Visualizer generates a structured hierarchy of files to organize the processed data and visualizations. Understanding this structure is crucial for working with the application and integrating it with other systems.
+
+### Directory Structure
+
+For each processed experiment, the application creates a dedicated directory in the Reports folder, named after the experiment:
 
 ```
 Reports/
-└── ExperimentName/               # One folder per experiment
-    ├── experiment_summary.json   # Overall experiment metadata
-    ├── ExperimentName_complete.csv   # All stages combined
-    ├── ExperimentName_all_stages.json # All data in JSON format
-    ├── ExperimentName_plotly_data.json # Visualization data for all stages
-    ├── ExperimentName_temperature_plotly.json # Temperature category plot
-    ├── ExperimentName_pressure_plotly.json # Pressure category plot
-    ├── ExperimentName_flow_plotly.json # Flow category plot
-    ├── ExperimentName_outlet_composition_plotly.json # Composition category plot
-    ├── ExperimentName_datetime_vector.json # DateTime vector visualization
-    ├── stage_1/                  # One subfolder per stage
-    │   ├── stage_1_data.csv      # CSV data for stage 1
-    │   ├── stage_1_data.json     # JSON data for stage 1
-    │   └── stage_1_plotly.json   # Visualization data for stage 1
-    ├── stage_2/
-    │   ├── stage_2_data.csv
-    │   ├── stage_2_data.json
-    │   └── stage_2_plotly.json
-    └── ...
+└── 24_06_10 13_21_12/                     # Experiment directory
+    ├── experiment_summary.json            # Experiment metadata and summary
+    ├── 24_06_10 13_21_12_complete.csv     # Complete experiment data in CSV format
+    ├── 24_06_10 13_21_12_all_stages.json  # Complete experiment data in JSON format
+    ├── 24_06_10 13_21_12_temp_plotly_data.json        # Temperature plot data
+    ├── 24_06_10 13_21_12_multipoint_temp_plotly_data.json # Multipoint temperature plot data
+    ├── 24_06_10 13_21_12_saturator_temp_plotly_data.json  # Saturator temperature plot data
+    ├── 24_06_10 13_21_12_pressure_plotly_data.json    # Pressure plot data
+    ├── 24_06_10 13_21_12_flow_plotly_data.json        # Flow plot data
+    ├── 24_06_10 13_21_12_outlet_plotly_data.json      # Outlet composition plot data
+    └── stage_2/                           # Stage-specific directory
+        ├── stage_2_data.csv               # Stage data in CSV format
+        ├── stage_2_data.json              # Stage data in JSON format
+        ├── stage_2_temp_plotly.json       # Stage temperature plot data
+        ├── stage_2_multipoint_temp_plotly.json   # Stage multipoint temperature plot data
+        ├── stage_2_saturator_temp_plotly.json    # Stage saturator temperature plot data
+        ├── stage_2_pressure_plotly.json    # Stage pressure plot data
+        ├── stage_2_flow_plotly.json        # Stage flow plot data
+        └── stage_2_outlet_plotly.json      # Stage outlet composition plot data
 ```
 
-### Experiment Summary JSON
+### File Formats
+
+The application generates several types of files:
+
+#### 1. Experiment Summary (JSON)
 
 The `experiment_summary.json` file contains metadata about the experiment, including:
+- Processing timestamp
+- Total number of stages
+- Stage numbers
+- Column mapping with statistical information
 
+Example:
 ```json
 {
   "metadata": {
-    "processed_at": "2023-04-01T12:34:56.789012",
-    "total_stages": 3,
-    "stage_numbers": [1, 2, 3],
-    "base_filename": "Exp012_Parameters_R151_2682"
+    "processed_at": "2025-05-29T20:23:15.301851",
+    "total_stages": 1,
+    "stage_numbers": [2],
+    "base_filename": "24_06_10 13_21_12"
   },
   "column_mapping": {
-    "DateTime": {
+    "Time_Minutes": {
       "index": 0,
-      "dtype": "datetime64[ns]",
-      "non_null_count": 500,
-      "null_count": 0
-    },
-    "Stage": {
-      "index": 1,
-      "dtype": "int64",
-      "non_null_count": 500,
+      "dtype": "float64",
+      "non_null_count": 129,
       "null_count": 0
     },
     "R1/2 T read [°C]": {
@@ -727,80 +1482,123 @@ The `experiment_summary.json` file contains metadata about the experiment, inclu
       "max": 550.5,
       "mean": 500.3,
       "std": 25.4
-    },
-    // ... other columns
+    }
+    // Additional columns...
   },
   "stages_info": {
-    "1": {
-      "row_count": 180,
+    "2": {
+      "row_count": 129,
       "time_range": {
         "start": 0.0,
-        "end": 179.0,
-        "duration": 179.0
-      }
-    },
-    "2": {
-      "row_count": 320,
-      "time_range": {
-        "start": 180.0,
-        "end": 499.0,
-        "duration": 319.0
+        "end": 128.0,
+        "duration": 128.0
       }
     }
-    // ... other stages
   }
 }
 ```
 
-### Stage Data JSON
+#### 2. Complete Data (CSV)
 
-Each stage folder contains a `stage_X_data.json` file with the data for that stage:
+The `{experiment_name}_complete.csv` file contains all the data from the experiment in CSV format, with each row representing a measurement at a specific time point.
 
+Example:
+```csv
+Time_Minutes,NH3 Actual Set-Point [Nml/min],NH3 Actual Flow [Nml/min],Inert Actual Set-Point [Nml/min],Inert Actual Flow [Nml/min],H2 Actual Set-Point [Nml/min],H2 Actual Flow [Nml/min],R1/2 T set [°C],R1/2 T read [°C],R1/2 T power [%],Saturator T read [°C],Pressure SETPOINT [bar],Pressure PIC [bar],Pressure reading line [bar],Pressure reading R1/2 IN [bar],Pressure reading R1/2 OUT [bar]
+0.0,0.0,0.0,400.0,400.0,0.0,0.0,163.3,156.2050364157259,25.600487144764557,0.0,0.0,0.0,0.1,0.6,-0.2
+1.0,0.0,0.0,400.0,400.0,0.0,0.0,165.14063319843282,158.31467932637683,25.475830166855183,0.0,0.0,0.0,0.1,0.6,-0.2
+```
+
+#### 3. Complete Data (JSON)
+
+The `{experiment_name}_all_stages.json` file contains all the data from the experiment in JSON format, with each column represented as an array of values.
+
+Example:
 ```json
 {
-  "DateTime": ["2023-04-01 12:00:00", "2023-04-01 12:01:00", "..."],
-  "Stage": [1, 1, 1, "..."],
-  "Time_Minutes": [0.0, 1.0, 2.0, "..."],
-  "R1/2 T read [°C]": [450.2, 451.3, 450.8, "..."],
-  "Pressure reading line [bar]": [25.3, 25.4, 25.2, "..."],
-  "NH3 Actual Flow [Nml/min]": [380.5, 380.2, 380.4, "..."],
-  // ... other measurements
+  "Time_Minutes": [0.0, 1.0, 2.0, 3.0, ...],
+  "NH3 Actual Set-Point [Nml/min]": [0.0, 0.0, 0.0, 0.0, ...],
+  "NH3 Actual Flow [Nml/min]": [0.0, 0.0, 0.0, 0.0, ...],
+  "R1/2 T set [°C]": [163.3, 165.14063319843282, 167.11889377598294, 169.02869189211287, ...],
+  "R1/2 T read [°C]": [156.2050364157259, 158.31467932637683, 160.54184267849114, 162.84644397781336, ...],
+  "R1/2 T power [%]": [25.600487144764557, 25.475830166855183, 25.363037256320076, 25.24913095257221, ...],
+  // Additional columns...
 }
 ```
 
-### Plotly JSON Format
+#### 4. Stage Data (CSV)
 
-The `stage_X_plotly.json` and category plot files use the Plotly JSON format:
+The `stage_{stage_num}_data.csv` file contains the data for a specific stage in CSV format.
 
+Example:
+```csv
+Time_Minutes,NH3 Actual Set-Point [Nml/min],NH3 Actual Flow [Nml/min],Inert Actual Set-Point [Nml/min],Inert Actual Flow [Nml/min],H2 Actual Set-Point [Nml/min],H2 Actual Flow [Nml/min],R1/2 T set [°C],R1/2 T read [°C],R1/2 T power [%],Saturator T read [°C],Pressure SETPOINT [bar],Pressure PIC [bar],Pressure reading line [bar],Pressure reading R1/2 IN [bar],Pressure reading R1/2 OUT [bar]
+0.0,0.0,0.0,400.0,400.0,0.0,0.0,163.3,156.2050364157259,25.600487144764557,0.0,0.0,0.0,0.1,0.6,-0.2
+1.0,0.0,0.0,400.0,400.0,0.0,0.0,165.14063319843282,158.31467932637683,25.475830166855183,0.0,0.0,0.0,0.1,0.6,-0.2
+```
+
+#### 5. Stage Data (JSON)
+
+The `stage_{stage_num}_data.json` file contains the data for a specific stage in JSON format.
+
+Example:
 ```json
 {
+  "Time_Minutes": [0.0, 1.0, 2.0, 3.0, ...],
+  "NH3 Actual Set-Point [Nml/min]": [0.0, 0.0, 0.0, 0.0, ...],
+  "NH3 Actual Flow [Nml/min]": [0.0, 0.0, 0.0, 0.0, ...],
+  "R1/2 T set [°C]": [163.3, 165.14063319843282, 167.11889377598294, 169.02869189211287, ...],
+  "R1/2 T read [°C]": [156.2050364157259, 158.31467932637683, 160.54184267849114, 162.84644397781336, ...],
+  // Additional columns...
+}
+```
+
+#### 6. Overall Plot Data (JSON)
+
+The `{experiment_name}_{category}_plotly_data.json` files contain the Plotly visualization data for different categories across all stages.
+
+Example (`24_06_10 13_21_12_temp_plotly_data.json`):
+```json
+{
+  "metadata": {
+    "title": "Temperature Data - 24_06_10 13_21_12",
+    "processed_at": "2025-05-29T20:23:15.390748",
+    "total_stages": 1
+  },
   "data": [
     {
-      "x": [0.0, 1.0, 2.0, "..."],
-      "y": [450.2, 451.3, 450.8, "..."],
+      "x": [0.0, 1.0, 2.0, 3.0, ...],
+      "y": [163.3, 165.14063319843282, 167.11889377598294, 169.02869189211287, ...],
       "type": "scatter",
       "mode": "lines",
-      "name": "R1/2 T read [°C]",
+      "name": "R1/2 T set [°C]",
       "line": {"color": "#ff6e6e", "width": 2}
     },
     {
-      "x": [0.0, 1.0, 2.0, "..."],
-      "y": [25.3, 25.4, 25.2, "..."],
+      "x": [0.0, 1.0, 2.0, 3.0, ...],
+      "y": [156.2050364157259, 158.31467932637683, 160.54184267849114, 162.84644397781336, ...],
       "type": "scatter",
       "mode": "lines",
-      "name": "Pressure reading line [bar]",
+      "name": "R1/2 T read [°C]",
       "line": {"color": "#5c9eff", "width": 2}
     },
-    // ... other traces
+    {
+      "x": [0.0, 1.0, 2.0, 3.0, ...],
+      "y": [25.600487144764557, 25.475830166855183, 25.363037256320076, 25.24913095257221, ...],
+      "type": "scatter",
+      "mode": "lines",
+      "name": "R1/2 T power [%]",
+      "line": {"color": "#6dff6d", "width": 2}
+    }
   ],
   "layout": {
-    "title": "Stage 1 - Exp012_Parameters_R151_2682",
+    "title": "Temperature Data - 24_06_10 13_21_12",
     "xaxis": {
       "title": "Time (minutes)",
       "gridcolor": "rgba(255, 255, 255, 0.1)"
     },
     "yaxis": {
-      "title": "Values",
+      "title": "Temperature (°C) / Power (%)",
       "gridcolor": "rgba(255, 255, 255, 0.1)"
     },
     "template": "plotly_dark",
@@ -818,100 +1616,772 @@ The `stage_X_plotly.json` and category plot files use the Plotly JSON format:
 }
 ```
 
-This format is used by the frontend to render interactive plots using Plotly.js.
+#### 7. Stage Plot Data (JSON)
+
+The `stage_{stage_num}_{category}_plotly.json` files contain the Plotly visualization data for different categories within a specific stage.
+
+Example (`stage_2_temp_plotly.json`):
+```json
+{
+  "data": [
+    {
+      "x": [0.0, 1.0, 2.0, 3.0, ...],
+      "y": [163.3, 165.14063319843282, 167.11889377598294, 169.02869189211287, ...],
+      "type": "scatter",
+      "mode": "lines",
+      "name": "R1/2 T set [°C]",
+      "line": {"color": "#ff6e6e", "width": 2}
+    },
+    {
+      "x": [0.0, 1.0, 2.0, 3.0, ...],
+      "y": [156.2050364157259, 158.31467932637683, 160.54184267849114, 162.84644397781336, ...],
+      "type": "scatter",
+      "mode": "lines",
+      "name": "R1/2 T read [°C]",
+      "line": {"color": "#5c9eff", "width": 2}
+    }
+  ],
+  "layout": {
+    "title": "Stage 2 - Temperature",
+    "xaxis": {
+      "title": "Time (minutes)",
+      "gridcolor": "rgba(255, 255, 255, 0.1)"
+    },
+    "yaxis": {
+      "title": "Temperature (°C) / Power (%)",
+      "gridcolor": "rgba(255, 255, 255, 0.1)"
+    },
+    "template": "plotly_dark",
+    "paper_bgcolor": "#1e1e1e",
+    "plot_bgcolor": "#2d2d2d",
+    "font": {"color": "#e0e0e0"},
+    "hovermode": "closest",
+    "legend": {
+      "orientation": "v",
+      "bgcolor": "rgba(0,0,0,0.5)",
+      "bordercolor": "rgba(255,255,255,0.2)",
+      "borderwidth": 1
+    }
+  }
+}
+```
+
+### Accessing the Data Programmatically
+
+You can access the processed data programmatically using Python or any language that can read JSON and CSV files:
+
+#### Python Example: Loading and Analyzing Stage Data
+
+```python
+import pandas as pd
+import json
+import matplotlib.pyplot as plt
+
+# Load stage data
+def load_stage_data(experiment_name, stage_num):
+    # Load JSON data
+    with open(f"Reports/{experiment_name}/stage_{stage_num}/stage_{stage_num}_data.json", "r") as f:
+        stage_data = json.load(f)
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(stage_data)
+    return df
+
+# Load Plotly visualization data
+def load_plotly_data(experiment_name, stage_num, category="temperature"):
+    file_path = f"Reports/{experiment_name}/stage_{stage_num}/stage_{stage_num}_{category}_plotly.json"
+    with open(file_path, "r") as f:
+        plotly_data = json.load(f)
+    return plotly_data
+
+# Example usage
+experiment_name = "24_06_10 13_21_12"
+stage_num = 2
+
+# Load stage data
+df = load_stage_data(experiment_name, stage_num)
+
+# Calculate statistics
+temp_stats = {
+    'mean': df['R1/2 T read [°C]'].mean(),
+    'max': df['R1/2 T read [°C]'].max(),
+    'min': df['R1/2 T read [°C]'].min(),
+    'std': df['R1/2 T read [°C]'].std()
+}
+
+print(f"Temperature Statistics for Stage {stage_num}:")
+print(f"Mean: {temp_stats['mean']:.2f}°C")
+print(f"Max: {temp_stats['max']:.2f}°C")
+print(f"Min: {temp_stats['min']:.2f}°C")
+print(f"Std Dev: {temp_stats['std']:.2f}°C")
+
+# Plot temperature data
+plt.figure(figsize=(12, 6))
+plt.plot(df['Time_Minutes'], df['R1/2 T set [°C]'], label='Set Temperature')
+plt.plot(df['Time_Minutes'], df['R1/2 T read [°C]'], label='Actual Temperature')
+plt.title(f"Temperature Data - Stage {stage_num}")
+plt.xlabel("Time (minutes)")
+plt.ylabel("Temperature (°C)")
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.show()
+```
+
+#### JavaScript Example: Loading and Displaying Plotly Data
+
+```javascript
+// Load and display Plotly data
+async function loadAndDisplayPlot(experimentName, stageNum, category = 'temperature') {
+  try {
+    // Fetch stage plot data
+    const response = await fetch(`/api/experiment/${encodeURIComponent(experimentName)}/stage/${stageNum}?type=${category}`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load plot data: ${response.statusText}`);
+    }
+    
+    const plotData = await response.json();
+    
+    // Render the plot
+    Plotly.newPlot('plot-container', plotData.data, plotData.layout, {
+      responsive: true,
+      displayModeBar: true
+    });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    document.getElementById('plot-container').innerHTML = `<div class="error">${error.message}</div>`;
+  }
+}
+
+// Usage
+document.addEventListener('DOMContentLoaded', () => {
+  loadAndDisplayPlot('24_06_10 13_21_12', 2, 'temperature');
+});
+```
+
+### Data Storage Considerations
+
+The application generates a significant amount of data for each experiment, including both raw data and visualization files. Here are some considerations for managing this data:
+
+1. **Storage Requirements**: For typical experiments, the generated files can range from a few MB to several hundred MB, depending on the number of stages and the complexity of the data.
+
+2. **Backup Strategy**: It's recommended to regularly back up the Reports folder to prevent data loss.
+
+3. **Data Cleanup**: For long-term storage, you might want to compress older experiment folders or move them to an archive location.
+
+4. **File Organization**: The hierarchical structure (experiment > stage > data/visualization) makes it easy to locate specific data, but as the number of experiments grows, you might want to implement additional organizational schemes (e.g., by date, by experiment type, etc.).
+
+5. **Data Sharing**: The JSON and CSV formats make it easy to share data with colleagues or import it into other analysis tools.
 
 ## Technical Details
+
+The NH3 Cracking Processor and Visualizer is built with a modern architecture that separates concerns between data processing, API endpoints, and the web interface. This section provides technical details about the implementation, architecture, and key components of the application.
+
+### Architecture Overview
+
+The application follows a layered architecture:
+
+1. **Data Processing Layer**: Handles the parsing, transformation, and storage of experimental data
+2. **API Layer**: Provides RESTful endpoints for accessing and manipulating data
+3. **Web Interface Layer**: Provides a user-friendly interface for interacting with the application
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                      Web Interface Layer                      │
+│                                                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │
+│  │   Experiment │  │   Upload    │  │   Documentation     │   │
+│  │   Viewer     │  │   Interface │  │   Pages             │   │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘   │
+└───────────────────────────────────────────────────────────────┘
+                            ▲
+                            │
+                            ▼
+┌───────────────────────────────────────────────────────────────┐
+│                         API Layer                             │
+│                                                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │
+│  │  Experiment │  │  Processing │  │  Visualization      │   │
+│  │  Endpoints  │  │  Endpoints  │  │  Endpoints          │   │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘   │
+└───────────────────────────────────────────────────────────────┘
+                            ▲
+                            │
+                            ▼
+┌───────────────────────────────────────────────────────────────┐
+│                   Data Processing Layer                       │
+│                                                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │
+│  │  File       │  │  Data       │  │  Visualization      │   │
+│  │  Parsing    │  │  Processing │  │  Generation         │   │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘   │
+└───────────────────────────────────────────────────────────────┘
+```
 
 ### Dependencies
 
 The application requires the following Python libraries:
 
-- Flask
-- Pandas
-- NumPy
-- SciPy
-- Plotly
-- Werkzeug
-- Jinja2
-- MarkupSafe
-- Click
-- itsdangerous
-- Pathlib
+1. **Web Framework**:
+   - **Flask**: Lightweight web application framework
+   - **Werkzeug**: WSGI utility library
+   - **Jinja2**: Template engine
+
+2. **Data Processing**:
+   - **Pandas**: Data manipulation and analysis
+   - **NumPy**: Numerical computing
+   - **SciPy**: Scientific computing (used for interpolation)
+
+3. **Visualization**:
+   - **Plotly**: Interactive visualizations
+
+4. **Utilities**:
+   - **MarkupSafe**: Escapes characters for HTML/XML
+   - **Click**: Command line interface creation kit
+   - **itsdangerous**: Helpers for passing data to untrusted environments
+   - **Pathlib**: Object-oriented filesystem paths
+
+### Installation Details
+
+The application can be installed using pip:
+
+```bash
+pip install -r requirements.txt
+```
+
+A minimal `requirements.txt` file would include:
+
+```
+Flask>=2.0.0
+pandas>=1.3.0
+numpy>=1.20.0
+scipy>=1.7.0
+plotly>=5.0.0
+werkzeug>=2.0.0
+jinja2>=3.0.0
+markupsafe>=2.0.0
+click>=8.0.0
+itsdangerous>=2.0.0
+```
+
+### File Structure
+
+The application's file structure is organized as follows:
+
+```
+NH3CrackProcessor/
+├── app.py                  # Main Flask application entry point
+├── Main_Web_ProcessorNH3Crack.py  # Core data processing implementation
+├── config.py               # Configuration settings
+├── process_all.py          # Script to process all experiments
+├── fix_json_nan.py         # Utility to fix JSON files with NaN values
+├── run.py                  # Script to run the application
+├── quick_start.py          # Quick start utility
+├── requirements.txt        # Python dependencies
+├── ReadMe.md               # Documentation
+├── Processors/             # Additional processing utilities
+│   ├── fix_plots.py        # Utility to fix or regenerate plots
+│   ├── test_paths.py       # Utility to test file paths
+│   ├── test_server.py      # Server testing utilities
+│   ├── setup_and_run.py    # Setup and deployment utilities
+│   ├── test_connection.py  # Network connection test
+│   ├── basic_app.py        # Simplified Flask app for testing
+│   └── debug_app.py        # Debug version of the app
+├── static/                 # Static web assets
+│   ├── css/                # Stylesheet files
+│   ├── js/                 # JavaScript files
+│   └── images/             # Image assets
+├── templates/              # Jinja2 HTML templates
+│   ├── base.html           # Base template with common elements
+│   ├── index.html          # Home page template
+│   ├── experiment.html     # Experiment details page
+│   ├── upload.html         # File upload page
+│   ├── documentation.html  # Documentation page
+│   └── error.html          # Error page template
+├── uploads/                # Directory for raw data files
+└── Reports/                # Directory for processed data and visualizations
+```
+
+### Core Components
+
+#### 1. ExperimentalDataProcessor
+
+The `ExperimentalDataProcessor` class in `Main_Web_ProcessorNH3Crack.py` is the core of the data processing pipeline. It handles:
+
+- File reading and parsing
+- Time vector creation
+- Stage detection
+- Data interpolation
+- Plotly JSON generation
+- Data export
+
+Key methods:
+
+```python
+def process_file(self, filename):
+    """Process a single file and generate all outputs"""
+    # Read the file
+    df = self.read_data_file(filename)
+    
+    # Create time vector
+    df = self.create_time_vector(df)
+    
+    # Slice by stages
+    stages = self.slice_by_stages(df)
+    
+    # Create column mapping
+    column_mapping = self.create_column_mapping(df)
+    
+    # Process each stage
+    processed_stages = {}
+    for stage_num, stage_df in stages.items():
+        # Interpolate data
+        interpolated_df = self.perform_interpolation(stage_df)
+        processed_stages[stage_num] = interpolated_df
+    
+    # Save data to files
+    base_filename = os.path.splitext(filename)[0]
+    self.save_stage_data(processed_stages, column_mapping, base_filename)
+    
+    # Create visualization files
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    exp_dir = os.path.join(self.output_folder, base_filename)
+    self.create_plotly_json(processed_stages, base_filename, timestamp, exp_dir)
+```
+
+#### 2. Flask Application
+
+The Flask application in `app.py` defines the web interface and API endpoints:
+
+```python
+# Routes
+@app.route('/')
+def index():
+    """Main page with list of experiments"""
+    experiments = get_experiments()
+    return render_template('index.html', experiments=experiments)
+
+@app.route('/experiment/<experiment_name>')
+def experiment(experiment_name):
+    """View a specific experiment"""
+    decoded_name = urllib.parse.unquote(experiment_name)
+    experiment_data = get_experiment_data(decoded_name)
+    return render_template('experiment.html', experiment=experiment_data)
+
+# API Routes
+@app.route('/api/experiments')
+def api_experiments():
+    """API endpoint to get all experiments"""
+    experiments = get_experiments()
+    return jsonify(experiments)
+```
+
+#### 3. Configuration
+
+The `config.py` file contains configuration settings for the application:
+
+```python
+# Data categories and their configurations
+DATA_CATEGORIES = {
+    "temperature": {
+        "title": "Temperature Measurements",
+        "y_axis_title": "Temperature (°C) / Power (%)",
+        "columns": [
+            "R1/2 T set [°C]", 
+            "R1/2 T read [°C]", 
+            "R1/2 T power [%]", 
+            "Saturator T read [°C]"
+        ],
+        "filename_suffix": "temp_plotly_data.json"
+    },
+    # Additional categories...
+}
+```
 
 ### JSON to Plotly Visualization Handling
 
 The application uses a two-step process to convert processed data to interactive Plotly visualizations:
 
-1. **Backend Processing**: The `ExperimentalDataProcessor` class generates Plotly-compatible JSON files for different views of the data.
-2. **Frontend Rendering**: The web interface uses Plotly.js to render these JSON files as interactive visualizations.
+1. **Backend (Python)**:
+   - The `ExperimentalDataProcessor` class generates Plotly-compatible JSON files
+   - These files contain both data (traces) and layout information
+
+2. **Frontend (JavaScript)**:
+   - The web interface loads these JSON files via the API
+   - Plotly.js renders the JSON data as interactive visualizations
 
 #### Backend JSON Generation
 
 The backend generates several types of Plotly JSON files:
 
-1. **Stage Plots**: One plot per experimental stage showing all measurements.
-2. **Category Plots**: Specialized plots for different measurement categories.
-3. **Overall Plot**: A combined plot showing key measurements across all stages.
-4. **DateTime Vector Visualization**: A plot using the exact datetime values for precise time positioning.
+1. **Stage Plots**: One plot per experimental stage showing all measurements
+2. **Category Plots**: Specialized plots for different measurement categories
+3. **Overall Plot**: A combined plot showing key measurements across all stages
 
-The JSON generation is handled by methods like `create_stage_plotly_json`, `_create_category_plot`, and `create_plotly_json`.
+Example of JSON generation code:
+
+```python
+def create_stage_plotly_json(self, stage_df, stage_num, base_filename, output_dir):
+    """Generate Plotly JSON files for a specific stage"""
+    
+    # Process each plot group
+    for group_key, group_config in config.STAGE_PLOT_GROUPS.items():
+        # Get the plot title and filename
+        title = group_config['title'].format(stage_num=stage_num)
+        filename = group_config['filename'].format(stage_num=stage_num)
+        
+        # Get columns to include in this plot
+        if 'column_pattern' in group_config:
+            # For multipoint thermocouples, find columns matching the pattern
+            pattern = group_config['column_pattern']
+            plot_cols = [col for col in stage_df.columns if pattern in col]
+        else:
+            # For regular plots, use the specified columns
+            plot_cols = [col for col in group_config['columns'] if col in stage_df.columns]
+        
+        # Create traces for each column
+        traces = []
+        for i, col in enumerate(plot_cols):
+            color = config.PLOT_COLORS[i % len(config.PLOT_COLORS)]
+            trace = {
+                'x': stage_df['Time_Minutes'].tolist(),
+                'y': stage_df[col].tolist(),
+                'type': 'scatter',
+                'mode': 'lines',
+                'name': col,
+                'line': {'color': color, 'width': 2}
+            }
+            traces.append(trace)
+        
+        # Create layout
+        layout = {
+            'title': title,
+            'xaxis': {
+                'title': 'Time (minutes)',
+                'gridcolor': config.PLOTLY_GRID_COLOR
+            },
+            'yaxis': {
+                'title': group_config['y_axis_title'],
+                'gridcolor': config.PLOTLY_GRID_COLOR
+            },
+            'template': config.PLOTLY_THEME,
+            'paper_bgcolor': config.PLOTLY_PAPER_BGCOLOR,
+            'plot_bgcolor': config.PLOTLY_PLOT_BGCOLOR,
+            'font': {'color': config.PLOTLY_FONT_COLOR},
+            'hovermode': 'closest',
+            'legend': {
+                'orientation': 'v',
+                'bgcolor': 'rgba(0,0,0,0.5)',
+                'bordercolor': 'rgba(255,255,255,0.2)',
+                'borderwidth': 1
+            }
+        }
+        
+        # Create Plotly data
+        plotly_data = {
+            'data': traces,
+            'layout': layout
+        }
+        
+        # Save to file
+        output_path = os.path.join(output_dir, filename)
+        with open(output_path, 'w') as f:
+            json.dump(plotly_data, f, indent=2, cls=CustomJSONEncoder)
+```
 
 #### Frontend Rendering
 
-The frontend loads these JSON files via the API and renders them using Plotly.js. The rendering is handled by JavaScript in the `experiment.html` template:
+The frontend renders the JSON data using Plotly.js:
 
 ```javascript
-function loadOverallPlot() {
-    fetch(`/api/experiment/${experimentName}/overall`)
-        .then(response => response.json())
-        .then(data => {
-            overallData = data;
-            updateOverallPlot();
-        });
-}
-
-function updateOverallPlot() {
-    if (!overallData || !overallData.data) return;
+// Load plot data from API
+async function loadPlotData(experimentName, plotType, stageNum = null) {
+    let url;
     
-    // Apply plot type changes
-    const plotType = overallPlotType.value;
-    const updatedData = overallData.data.map(trace => {
-        if (trace.type !== 'scatter') return trace;
-        return {
-            ...trace,
-            mode: plotType === 'line' ? 'lines' : 'markers'
-        };
+    if (stageNum) {
+        url = `/api/experiment/${encodeURIComponent(experimentName)}/stage/${stageNum}?type=${plotType}`;
+    } else {
+        url = `/api/experiment/${encodeURIComponent(experimentName)}/overall?type=${plotType}`;
+    }
+    
+    const response = await fetch(url);
+    const plotData = await response.json();
+    
+    // Render the plot
+    Plotly.newPlot('plot-container', plotData.data, plotData.layout, {
+        responsive: true,
+        displayModeBar: true
     });
-    
-    // Apply theme changes
-    const theme = overallPlotTheme.value;
-    const updatedLayout = {
-        ...overallData.layout,
-        template: theme
-    };
-    
-    Plotly.react('overall-plot', updatedData, updatedLayout, {responsive: true});
 }
 ```
-
-The frontend allows users to customize the visualizations in real-time, changing plot types, themes, and filtering options without requiring server-side processing.
-
-### Core Components
-
-The application consists of the following core components:
-
-- **ExperimentalDataProcessor**: Handles data processing and visualization generation
-- **WebInterface**: Provides the user interface for managing experiments and visualizing data
-- **API**: Allows programmatic access to the application's functionality
 
 ### Data Flow
 
 The data flow through the application is as follows:
 
-1. **Data Input**: Experimental data files are uploaded to the application
-2. **Data Processing**: The data is processed and analyzed using the ExperimentalDataProcessor
-3. **Data Visualization**: The processed data is visualized using Plotly
-4. **Data Export**: The processed data is exported in CSV and JSON formats
+1. **Data Input**:
+   - User uploads a tab-separated text file to the uploads folder
+   - The application reads the file and parses it into a pandas DataFrame
+
+2. **Data Processing**:
+   - The application creates a time vector in minutes
+   - The application detects experimental stages
+   - The application performs cubic interpolation for all numeric columns
+   - The application organizes the data into different categories
+
+3. **Data Storage**:
+   - The application saves the processed data to CSV and JSON files
+   - The application generates Plotly JSON files for visualization
+
+4. **Data Access**:
+   - User accesses the data through the web interface
+   - The web interface loads the Plotly JSON files via the API
+   - Plotly.js renders the JSON data as interactive visualizations
+
+5. **Data Export**:
+   - User can export the visualizations as PNG images
+   - User can download the processed data in CSV or JSON format
+
+### NaN Handling
+
+JSON does not support NaN (Not a Number) values, which can cause issues when the data contains missing or invalid measurements. The application uses a custom JSON encoder to handle NaN values:
+
+```python
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.integer, np.floating, np.bool_)):
+            return obj.item()
+        if pd.isna(obj):
+            return None
+        if np.isnan(obj):
+            return None
+        if np.isinf(obj):
+            return None
+        return super().default(obj)
+```
+
+This encoder converts NaN values to `null`, which is a valid JSON value and can be properly handled by JavaScript.
+
+### Handling Large Files
+
+For large experimental data files, the application may encounter memory or performance issues. The application includes several optimizations to handle large files:
+
+1. **Chunked Reading**: For very large files, the application can read the file in chunks:
+
+```python
+def read_large_file(self, filename, chunksize=10000):
+    """Read a large file in chunks"""
+    filepath = os.path.join(self.input_folder, filename)
+    
+    # Try multiple encodings
+    for encoding in config.FILE_ENCODINGS:
+        try:
+            chunks = []
+            for chunk in pd.read_csv(filepath, sep='\t', encoding=encoding, chunksize=chunksize):
+                chunks.append(chunk)
+            
+            # Combine chunks
+            df = pd.concat(chunks, ignore_index=True)
+            return df
+        except Exception as e:
+            continue
+    
+    return None
+```
+
+2. **Selective Interpolation**: For files with many columns, the application can selectively interpolate only the necessary columns:
+
+```python
+def selective_interpolation(self, df, columns_to_interpolate, target_interval_minutes=1):
+    """Interpolate only specific columns"""
+    # Create target time vector
+    time_min = df['Time_Minutes'].min()
+    time_max = df['Time_Minutes'].max()
+    target_time = np.arange(time_min, time_max + target_interval_minutes, target_interval_minutes)
+    
+    # Create new dataframe
+    interpolated_df = pd.DataFrame({'Time_Minutes': target_time})
+    
+    # Interpolate only the specified columns
+    for col in columns_to_interpolate:
+        if col in df.columns and col != 'Time_Minutes' and col != 'Stage':
+            # Remove NaN values for interpolation
+            mask = ~(df['Time_Minutes'].isna() | df[col].isna())
+            if mask.sum() > 3:  # Need at least 4 points for cubic interpolation
+                x = df.loc[mask, 'Time_Minutes'].values
+                y = df.loc[mask, col].values
+                
+                # Create interpolation function
+                f = interp1d(x, y, kind='cubic', bounds_error=False, fill_value='extrapolate')
+                interpolated_df[col] = f(target_time)
+            else:
+                interpolated_df[col] = np.nan
+    
+    return interpolated_df
+```
+
+3. **Downsampling**: For visualizations, the application can downsample the data to reduce the size of the JSON files:
+
+```python
+def downsample_for_visualization(self, df, target_points=1000):
+    """Downsample data for visualization"""
+    if len(df) <= target_points:
+        return df
+    
+    # Calculate stride
+    stride = max(1, len(df) // target_points)
+    
+    # Downsample
+    return df.iloc[::stride].copy()
+```
+
+### Error Handling
+
+The application includes comprehensive error handling to gracefully handle issues with data processing and visualization:
+
+1. **File Reading Errors**:
+   - The application tries multiple encodings to read the file
+   - If all fail, it returns a clear error message
+
+2. **Time Vector Creation Errors**:
+   - The application tries multiple date formats
+   - If all fail, it falls back to a sequential time vector
+
+3. **Interpolation Errors**:
+   - The application checks for sufficient data points before interpolation
+   - If not enough points, it skips interpolation for that column
+
+4. **Visualization Errors**:
+   - The application checks for the existence of required columns
+   - If columns are missing, it skips the corresponding visualizations
+
+5. **API Error Handling**:
+   - The API returns appropriate HTTP status codes and error messages
+   - The frontend gracefully handles API errors with user-friendly messages
+
+Example of API error handling:
+
+```python
+@app.route('/api/experiment/<experiment_name>/overall')
+def api_experiment_overall(experiment_name):
+    """API endpoint for overall experiment plot data"""
+    try:
+        # URL decode the experiment name
+        decoded_name = urllib.parse.unquote(experiment_name)
+        
+        # Get plot type from query parameters
+        plot_type = request.args.get('type', 'temperature')
+        
+        # Check if the requested plot type is valid
+        if plot_type not in plot_type_map:
+            return jsonify({
+                "error": f"Invalid plot type: {plot_type}",
+                "available_types": list(plot_type_map.keys())
+            }), 400
+        
+        # Get the filename for the requested plot type
+        filename = plot_type_map[plot_type]
+        
+        # Check for overall plotly file
+        exp_dir = os.path.join(app.config['REPORTS_FOLDER'], decoded_name)
+        plotly_path = os.path.join(exp_dir, filename)
+        
+        if not os.path.exists(plotly_path):
+            # If the specific plot doesn't exist, list available plots
+            available_plots = []
+            for plot_key, plot_name in plot_type_map.items():
+                test_path = os.path.join(exp_dir, plot_name)
+                if os.path.exists(test_path):
+                    available_plots.append(plot_key)
+            
+            if not available_plots:
+                return jsonify({
+                    "error": "No plot data found. Try regenerating visualizations."
+                }), 404
+            else:
+                return jsonify({
+                    "error": f"Plot type '{plot_type}' not found",
+                    "available_types": available_plots
+                }), 404
+        
+        with open(plotly_path, 'r') as f:
+            plot_data = json.load(f)
+        
+        return jsonify(plot_data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+```
+
+### Performance Considerations
+
+The application is designed to handle large experimental datasets efficiently. Here are some performance considerations:
+
+1. **Memory Usage**:
+   - For very large files, use chunked reading
+   - Selectively interpolate only necessary columns
+   - Downsample data for visualization
+
+2. **Processing Speed**:
+   - Use NumPy for numerical operations
+   - Use SciPy for efficient interpolation
+   - Use pandas for data manipulation
+
+3. **Web Interface Performance**:
+   - Load only necessary data on demand
+   - Use efficient API endpoints
+   - Implement pagination for large datasets
+
+4. **Visualization Performance**:
+   - Downsample data for visualization
+   - Use efficient Plotly.js rendering
+   - Implement progressive loading for large plots
+
+### Security Considerations
+
+The application includes several security features:
+
+1. **File Upload Security**:
+   - Validate file extensions
+   - Limit file size
+   - Sanitize filenames
+
+```python
+def allowed_file(filename):
+    """Check if a file has an allowed extension"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """Upload a file to the uploads folder"""
+    # Check if the post request has the file part
+    if 'file' not in request.files:
+        return render_template('error.html', message="No file part")
+        
+    file = request.files['file']
+    
+    # If user does not select file, browser also
+    # submit an empty part without filename
+    if file.filename == '':
+        return render_template('error.html', message="No selected file")
+        
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        return redirect(url_for('index'))
+    else:
+        return render_template('error.html', message="File type not allowed")
+```
+
+2. **API Security**:
+   - Input validation
+   - Error handling
+   - Rate limiting (if needed)
+
+3. **Data Security**:
+   - Sanitize data before storage
+   - Validate data before processing
+   - Handle NaN values properly
 
 ## Examples
 

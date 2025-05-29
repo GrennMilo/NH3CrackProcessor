@@ -5,9 +5,19 @@ NH3 Cracking Batch Processor
 This script processes all text files in the uploads folder using the ExperimentalDataProcessor.
 """
 import os
+import sys
 import glob
 import argparse
-from Main_Web_ProcessorNH3Crack import ExperimentalDataProcessor
+
+# Ensure Processors directory is in the path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import the processor class
+try:
+    from Processors import ExperimentalDataProcessor
+except ImportError:
+    # Fallback for backwards compatibility
+    from Main_Web_ProcessorNH3Crack import ExperimentalDataProcessor
 
 def parse_arguments():
     """Parse command-line arguments"""
