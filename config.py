@@ -23,6 +23,14 @@ ALLOWED_EXTENSIONS = {"txt"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(REPORTS_FOLDER, exist_ok=True)
 
+# Data point filtering settings
+# When True, only show original data points from the input file in plots
+PLOT_ONLY_ORIGINAL_POINTS = True
+# When True, exclude interpolated points from the processed data completely
+EXCLUDE_INTERPOLATED_POINTS = False
+# Threshold (in minutes) to determine if a point is close enough to an original point
+ORIGINAL_POINT_THRESHOLD = 0.1
+
 # Visualization settings
 PLOTLY_THEME = "plotly_dark"
 PLOTLY_PAPER_BGCOLOR = "#1e1e1e"

@@ -2622,6 +2622,29 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Recent Updates
+
+### Original Data Point Filtering (2024-05-31)
+- Added the ability to filter out interpolated data points:
+  - Plots now show only original data points from the input file by default
+  - Added UI controls to toggle between showing all points or only original points
+  - Data points from the original file are tracked throughout the processing pipeline
+  - Original datetime values are preserved and associated with the correct data points
+
+### Import System Enhancement (2024-05-30)
+- Improved the import system in utility scripts to ensure proper module resolution:
+  - `process_all.py` now dynamically resolves module imports
+  - `fix_json_nan.py` now includes fallback import options
+  - Both scripts now include error handling for import exceptions
+  - Path resolution is improved to work in different execution contexts
+
+### Documentation Styling Enhancement (2024-05-30)
+- Added modern card-based styling to the documentation section:
+  - Each documentation section now appears in a visually distinct card
+  - Cards feature color-coded borders and headers
+  - Improved typography and spacing for better readability
+  - Added visual container styling for code diagrams and examples
+
 ```
 MIT License
 

@@ -122,6 +122,36 @@
     <button id="visualize-btn" class="btn">Regenerate Visualizations</button>
     <button id="fix-json-btn" class="btn">Fix JSON Files</button>
 </div>
+
+<div class="plot-controls">
+    <div class="control-group">
+        <label for="plot-type-selector">Plot Type:</label>
+        <select id="plot-type-selector">
+            <option value="temperature">Temperature</option>
+            <option value="multipoint">Multipoint Temperature</option>
+            <option value="saturator">Saturator Temperature</option>
+            <option value="pressure">Pressure</option>
+            <option value="flow">Flow</option>
+            <option value="outlet">Outlet Composition</option>
+        </select>
+    </div>
+    
+    <div class="control-group">
+        <label for="plot-mode-selector">Data Points:</label>
+        <select id="plot-mode-selector">
+            <option value="original">Original Points Only</option>
+            <option value="all">All Points (Interpolated)</option>
+        </select>
+    </div>
+    
+    <div class="control-group">
+        <label for="theme-selector">Theme:</label>
+        <select id="theme-selector">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+        </select>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -525,6 +555,35 @@
                 fixJsonBtn.textContent = 'Fix JSON Files';
             });
     }
+
+    // Function to toggle between original and interpolated data points
+    function togglePlotMode(mode) {
+        const loadingMsg = document.createElement('div');
+        loadingMsg.className = 'loading';
+        loadingMsg.textContent = 'Updating plot mode...';
+        document.getElementById('plot-container').innerHTML = '';
+        document.getElementById('plot-container').appendChild(loadingMsg);
+        
+        fetch(`/api/toggle-plot-mode/${mode}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Reload the current plot with the new mode
+                    loadPlotData(plotType);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error toggling plot mode:', error);
+                alert('Error toggling plot mode');
+            });
+    }
+    
+    // Add event listener for plot mode selector
+    document.getElementById('plot-mode-selector').addEventListener('change', function() {
+        togglePlotMode(this.value);
+    });
 </script>
 
 <style>

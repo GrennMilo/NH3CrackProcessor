@@ -646,6 +646,36 @@ def api_fix_experiment_json(experiment_name):
             "traceback": traceback.format_exc()
         }), 500
 
+@app.route('/api/toggle-plot-mode/<mode>')
+def toggle_plot_mode(mode):
+    """Toggle between showing all points or only original points"""
+    try:
+        if mode == 'original':
+            config.PLOT_ONLY_ORIGINAL_POINTS = True
+            return jsonify({
+                "success": True, 
+                "message": "Now showing only original data points",
+                "mode": "original"
+            })
+        elif mode == 'all':
+            config.PLOT_ONLY_ORIGINAL_POINTS = False
+            return jsonify({
+                "success": True, 
+                "message": "Now showing all data points including interpolated ones",
+                "mode": "all"
+            })
+        else:
+            return jsonify({
+                "success": False, 
+                "message": "Invalid mode. Use 'original' or 'all'."
+            }), 400
+    except Exception as e:
+        logger.error(f"Error toggling plot mode: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }), 500
+
 # Run the application
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8080) 

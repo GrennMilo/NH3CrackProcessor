@@ -63,7 +63,7 @@ class ExperimentalDataProcessor:
         return None
     
     def create_time_vector(self, df):
-        """Create a proper time vector from the datetime column"""
+        """Create a proper time vector from the datetime column and track original timestamps"""
         # Assume first column is datetime
         datetime_col = df.columns[0]
         
@@ -95,15 +95,19 @@ class ExperimentalDataProcessor:
             start_time = df[datetime_col].min()
             df['Time_Minutes'] = (df[datetime_col] - start_time).dt.total_seconds() / 60
             
+            # Store the original timestamps to track real vs interpolated data
+            df['Original_Point'] = True
+            
             return df
         except Exception as e:
             print(f"Error processing datetime: {e}")
             # Fallback: create sequential time vector
             df['Time_Minutes'] = np.arange(len(df))
+            df['Original_Point'] = True
             return df
     
     def perform_interpolation(self, df, target_interval_minutes=1):
-        """Perform cubic interpolation for all numeric columns"""
+        """Perform cubic interpolation for all numeric columns and mark original points"""
         # Create target time vector with 1-minute intervals
         time_min = df['Time_Minutes'].min()
         time_max = df['Time_Minutes'].max()
@@ -112,9 +116,19 @@ class ExperimentalDataProcessor:
         # Create new dataframe for interpolated data
         interpolated_df = pd.DataFrame({'Time_Minutes': target_time})
         
+        # Add a column to track which points are original vs interpolated
+        # Initially mark all as interpolated (False)
+        interpolated_df['Original_Point'] = False
+        
+        # Mark points that are within a small threshold of original data points
+        threshold = target_interval_minutes / 10  # 1/10th of the interval as threshold
+        for original_time in df['Time_Minutes']:
+            mask = abs(interpolated_df['Time_Minutes'] - original_time) < threshold
+            interpolated_df.loc[mask, 'Original_Point'] = True
+        
         # Get numeric columns (excluding time and stage columns)
         numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-        exclude_cols = ['Time_Minutes']
+        exclude_cols = ['Time_Minutes', 'Original_Point']
         if 'Stage' in df.columns:
             exclude_cols.append('Stage')
         
@@ -153,6 +167,20 @@ class ExperimentalDataProcessor:
             except Exception as e:
                 print(f"Error interpolating Stage: {e}")
                 interpolated_df['Stage'] = 0
+        
+        # Add the original datetime values for points that match original data
+        if df.columns[0] in df.columns:
+            datetime_col = df.columns[0]
+            interpolated_df[datetime_col] = None
+            
+            # For each original point, find the closest interpolated point and copy the datetime
+            for idx, row in df.iterrows():
+                closest_idx = abs(interpolated_df['Time_Minutes'] - row['Time_Minutes']).idxmin()
+                interpolated_df.loc[closest_idx, datetime_col] = row[datetime_col]
+        
+        # If configured to exclude interpolated points in config
+        if hasattr(config, 'EXCLUDE_INTERPOLATED_POINTS') and config.EXCLUDE_INTERPOLATED_POINTS:
+            return interpolated_df[interpolated_df['Original_Point']]
         
         return interpolated_df
     
@@ -305,56 +333,17 @@ class ExperimentalDataProcessor:
         # Create base title
         base_title = f'Stage {stage_num} - {base_filename}'
         
-        # Define column groups for different plots
-        plot_groups = {
-            'temperature': {
-                'title': f'{base_title} - Temperature',
-                'columns': ['R1/2 T set [\u00b0C]', 'R1/2 T read [\u00b0C]', 'R1/2 T power [%]', 'Saturator T read [\u00b0C]'],
-                'yaxis_title': 'Temperature (°C) / Power (%)',
-                'filename': f'stage_{stage_num}_temp_plotly.json'
-            },
-            'multipoint_temp': {
-                'title': f'{base_title} - Multipoint Thermocouples',
-                'columns': [col for col in stage_df.columns if col.startswith('R-1/2 T') and col.endswith('\u00b0C')],
-                'yaxis_title': 'Temperature (°C)',
-                'filename': f'stage_{stage_num}_multipoint_temp_plotly.json'
-            },
-            'saturator_temp': {
-                'title': f'{base_title} - Saturator Temperature',
-                'columns': ['Saturator T read [\u00b0C]'],
-                'yaxis_title': 'Temperature (°C)',
-                'filename': f'stage_{stage_num}_saturator_temp_plotly.json'
-            },
-            'pressure': {
-                'title': f'{base_title} - Pressure',
-                'columns': [
-                    'Pressure SETPOINT [bar]', 'Pressure PIC [bar]', 'Pressure reading line [bar]',
-                    'Pressure reading R1/2 IN [bar]', 'Pressure reading R1/2 OUT [bar]', 'High pressure NH3 line [bar]'
-                ],
-                'yaxis_title': 'Pressure (bar)',
-                'filename': f'stage_{stage_num}_pressure_plotly.json'
-            },
-            'flow': {
-                'title': f'{base_title} - Flow',
-                'columns': [
-                    'NH3 Actual Set-Point [Nml/min]', 'H2 Actual Flow [Nml/min]', 'Tot flow calc [Nml/min]',
-                    'NH3 in %', 'Inert in %', 'H2O in %'
-                ],
-                'yaxis_title': 'Flow (Nml/min) / Concentration (%)',
-                'filename': f'stage_{stage_num}_flow_plotly.json'
-            },
-            'outlet': {
-                'title': f'{base_title} - Outlet Stream',
-                'columns': ['NH3 out [%]', 'H2 out [%]', 'H2O out [%]'],
-                'yaxis_title': 'Concentration (%)',
-                'filename': f'stage_{stage_num}_outlet_plotly.json'
-            }
-        }
+        # Use plot groups from config
+        plot_groups = config.STAGE_PLOT_GROUPS
         
         # Create a plot for each group
         for group_name, group_info in plot_groups.items():
             # Filter columns that exist in the dataframe
-            available_columns = [col for col in group_info['columns'] if col in stage_df.columns]
+            if 'column_pattern' in group_info:
+                available_columns = [col for col in stage_df.columns if 
+                                    group_info['column_pattern'] in col and col.endswith('\u00b0C')]
+            else:
+                available_columns = [col for col in group_info['columns'] if col in stage_df.columns]
             
             if not available_columns:
                 print(f"Warning: No columns found for {group_name} plot in stage {stage_num}")
@@ -363,23 +352,28 @@ class ExperimentalDataProcessor:
             # Create traces for each column
             traces = []
             for col in available_columns:
-                # Filter out NaN values
-                valid_data = ~stage_df[col].isna()
+                # Filter by original points if configured to do so
+                if hasattr(config, 'PLOT_ONLY_ORIGINAL_POINTS') and config.PLOT_ONLY_ORIGINAL_POINTS:
+                    # Filter to original points only and exclude NaN values
+                    valid_data = stage_df['Original_Point'] & ~stage_df[col].isna()
+                else:
+                    # Just filter out NaN values
+                    valid_data = ~stage_df[col].isna()
                 
                 trace = {
                     'x': stage_df.loc[valid_data, 'Time_Minutes'].tolist(),
                     'y': stage_df.loc[valid_data, col].tolist(),
                     'type': 'scatter',
-                    'mode': 'lines',
+                    'mode': 'lines+markers' if config.PLOT_ONLY_ORIGINAL_POINTS else 'lines',
                     'name': col
                 }
                 traces.append(trace)
             
             # Create layout
             layout = {
-                'title': group_info['title'],
+                'title': group_info['title'].format(stage_num=stage_num),
                 'xaxis': {'title': 'Time (minutes)'},
-                'yaxis': {'title': group_info['yaxis_title']},
+                'yaxis': {'title': group_info['y_axis_title']},
                 'hovermode': 'closest',
                 'template': 'plotly_dark',
                 'legend': {'orientation': 'h', 'y': -0.2}
@@ -392,7 +386,7 @@ class ExperimentalDataProcessor:
             }
             
             # Save to file
-            output_path = os.path.join(output_dir, group_info['filename'])
+            output_path = os.path.join(output_dir, group_info['filename'].format(stage_num=stage_num))
             with open(output_path, 'w') as f:
                 json.dump(plotly_data, f, indent=2, cls=CustomJSONEncoder)
     
@@ -484,14 +478,19 @@ class ExperimentalDataProcessor:
                 
                 # Create traces for each column
                 for col in available_columns:
-                    # Filter out NaN values
-                    valid_data = ~stage_df[col].isna()
+                    # Filter by original points if configured to do so
+                    if hasattr(config, 'PLOT_ONLY_ORIGINAL_POINTS') and config.PLOT_ONLY_ORIGINAL_POINTS:
+                        # Filter to original points only and exclude NaN values
+                        valid_data = stage_df['Original_Point'] & ~stage_df[col].isna()
+                    else:
+                        # Just filter out NaN values
+                        valid_data = ~stage_df[col].isna()
                     
                     trace = {
                         'x': stage_df.loc[valid_data, 'Time_Minutes'].tolist(),
                         'y': stage_df.loc[valid_data, col].tolist(),
                         'type': 'scatter',
-                        'mode': 'lines',
+                        'mode': 'lines+markers' if config.PLOT_ONLY_ORIGINAL_POINTS else 'lines',
                         'name': f'Stage {stage_num} - {col}',
                         'line': {'color': color},
                         'legendgroup': f'stage_{stage_num}'
@@ -543,14 +542,19 @@ class ExperimentalDataProcessor:
                 
                 # Create a trace for each column in this category
                 for col in available_columns:
-                    # Filter out NaN values
-                    valid_data = ~stage_df[col].isna()
+                    # Filter by original points if configured to do so
+                    if hasattr(config, 'PLOT_ONLY_ORIGINAL_POINTS') and config.PLOT_ONLY_ORIGINAL_POINTS:
+                        # Filter to original points only and exclude NaN values
+                        valid_data = stage_df['Original_Point'] & ~stage_df[col].isna()
+                    else:
+                        # Just filter out NaN values
+                        valid_data = ~stage_df[col].isna()
                     
                     trace = {
                         'x': stage_df.loc[valid_data, 'Time_Minutes'].tolist(),
                         'y': stage_df.loc[valid_data, col].tolist(),
                         'type': 'scatter',
-                        'mode': 'lines',
+                        'mode': 'lines+markers' if config.PLOT_ONLY_ORIGINAL_POINTS else 'lines',
                         'name': f'Stage {stage_num} - {col}',
                         'line': {'color': stage_color, 'width': 2},
                         'legendgroup': f'stage_{stage_num}'
