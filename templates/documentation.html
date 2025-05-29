@@ -647,33 +647,38 @@ df['Time_Minutes'] = np.arange(len(df))</code></pre>
                     <h3 id="data-interpolation">Data Interpolation</h3>
                     <p>To ensure a consistent time grid across all measurements, the application performs cubic interpolation for all numeric columns. This is particularly important for creating smooth visualizations and for comparing data across different stages.</p>
                     
-                    <pre><code>def perform_interpolation(self, df, target_interval_minutes=1):
+                    <h4 id="gap-filtering">Gap Filtering</h4>
+                    <p>A key feature of the interpolation process is intelligent gap filtering. The application automatically detects and excludes time points that are too far from original data points, which prevents extrapolation across large time gaps where no measurements exist.</p>
+                    
+                    <p>Benefits of gap filtering include:</p>
+                    <ul>
+                        <li>Improved data quality by avoiding spurious interpolated values</li>
+                        <li>Preservation of the integrity of the original measurement points</li>
+                        <li>Automatic detection of discontinuities in time series data</li>
+                        <li>Prevention of misleading visualizations across data gaps</li>
+                    </ul>
+                    
+                    <p>The gap filtering is configurable through the <code>MAX_GAP_MINUTES</code> parameter in the configuration file (default: 5 minutes).</p>
+                    
+                    <p>Code snippet illustrating the gap filtering process:</p>
+                    <pre><code>def perform_interpolation(self, df, target_interval_minutes=1, max_gap_minutes=5):
     # Create target time vector with 1-minute intervals
     time_min = df['Time_Minutes'].min()
     time_max = df['Time_Minutes'].max()
     target_time = np.arange(time_min, time_max + target_interval_minutes, target_interval_minutes)
     
-    # Create new dataframe for interpolated data
-    interpolated_df = pd.DataFrame({'Time_Minutes': target_time})
+    # Filter target_time to exclude points far from actual data
+    original_times = df['Time_Minutes'].dropna().sort_values().values
+    valid_indices = []
     
-    # Get numeric columns (excluding time and stage columns)
-    numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-    exclude_cols = ['Time_Minutes', 'Stage']
-    numeric_columns = [col for col in numeric_columns if col not in exclude_cols]
+    for i, t in enumerate(target_time):
+        # Find minimum distance to any original data point
+        min_distance = np.min(np.abs(original_times - t))
+        if min_distance <= max_gap_minutes:
+            valid_indices.append(i)
     
-    # Interpolate each numeric column
-    for col in numeric_columns:
-        # Remove NaN values for interpolation
-        mask = ~(df['Time_Minutes'].isna() | df[col].isna())
-        if mask.sum() > 3:  # Need at least 4 points for cubic interpolation
-            x = df.loc[mask, 'Time_Minutes'].values
-            y = df.loc[mask, col].values
-            
-            # Create interpolation function
-            f = interp1d(x, y, kind='cubic', bounds_error=False, fill_value='extrapolate')
-            interpolated_df[col] = f(target_time)
-        else:
-            interpolated_df[col] = np.nan</code></pre>
+    # Apply filtering
+    target_time = target_time[valid_indices]</code></pre>
                     
                     <p>The application uses cubic interpolation when there are at least 4 data points, which provides smooth curves. For the Stage column, the application uses nearest-neighbor interpolation to maintain the integrity of the stage identifiers.</p>
                     

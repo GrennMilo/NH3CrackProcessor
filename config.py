@@ -23,10 +23,6 @@ ALLOWED_EXTENSIONS = {"txt"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(REPORTS_FOLDER, exist_ok=True)
 
-# Data interpolation settings
-MAX_INTERPOLATION_GAP_MINUTES = 60 * 1  # Maximum gap in minutes (default: 1 hour)
-MIN_VALID_DATA_POINTS = 1  # Minimum number of valid data points required
-
 # Visualization settings
 PLOTLY_THEME = "plotly_dark"
 PLOTLY_PAPER_BGCOLOR = "#1e1e1e"
@@ -186,4 +182,8 @@ FILE_ENCODINGS = ['utf-8', 'latin1', 'cp1252', 'ISO-8859-1']
 
 # Interpolation settings
 INTERPOLATION_TARGET_INTERVAL = 1  # 1 minute intervals
-INTERPOLATION_MIN_POINTS = 4  # Minimum points required for cubic interpolation 
+INTERPOLATION_MIN_POINTS = 4  # Minimum points required for cubic interpolation
+MAX_GAP_MINUTES = 5  # Maximum gap in minutes to consider for interpolation
+
+# File encoding options
+FILE_ENCODINGS = ['utf-8', 'latin1', 'cp1252', 'ISO-8859-1'] 

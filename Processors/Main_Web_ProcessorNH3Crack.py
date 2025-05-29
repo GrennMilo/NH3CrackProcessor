@@ -68,9 +68,6 @@ class ExperimentalDataProcessor:
         datetime_col = df.columns[0]
         
         try:
-            # Store original datetime strings
-            df['Original_DateTime'] = df[datetime_col].copy()
-            
             # Try different datetime formats
             date_formats = [
                 '%d/%m/%y %H:%M:%S',  # DD/MM/YY HH:MM:SS
@@ -98,68 +95,41 @@ class ExperimentalDataProcessor:
             start_time = df[datetime_col].min()
             df['Time_Minutes'] = (df[datetime_col] - start_time).dt.total_seconds() / 60
             
-            # Store the original time points to identify real vs interpolated data later
-            df['Is_Original_Point'] = True
-            
             return df
         except Exception as e:
             print(f"Error processing datetime: {e}")
             # Fallback: create sequential time vector
             df['Time_Minutes'] = np.arange(len(df))
-            df['Is_Original_Point'] = True
             return df
     
-    def perform_interpolation(self, df, target_interval_minutes=1):
-        """Perform cubic interpolation for all numeric columns while tracking original points"""
+    def perform_interpolation(self, df, target_interval_minutes=1, max_gap_minutes=5):
+        """Perform cubic interpolation for all numeric columns, excluding large gaps"""
         # Create target time vector with 1-minute intervals
         time_min = df['Time_Minutes'].min()
         time_max = df['Time_Minutes'].max()
         target_time = np.arange(time_min, time_max + target_interval_minutes, target_interval_minutes)
         
+        # Filter target_time to exclude points far from actual data
+        original_times = df['Time_Minutes'].dropna().sort_values().values
+        valid_indices = []
+        
+        for i, t in enumerate(target_time):
+            # Find minimum distance to any original data point
+            min_distance = np.min(np.abs(original_times - t))
+            if min_distance <= max_gap_minutes:
+                valid_indices.append(i)
+        
+        # Apply filtering only if we have valid indices and they're fewer than the original target points
+        if valid_indices and len(valid_indices) < len(target_time):
+            print(f"Filtering out {len(target_time) - len(valid_indices)} points that are too far from original data")
+            target_time = target_time[valid_indices]
+        
         # Create new dataframe for interpolated data
         interpolated_df = pd.DataFrame({'Time_Minutes': target_time})
         
-        # Mark which time points are original vs interpolated
-        # A point is original if it's within a small tolerance of any original time point
-        tolerance = target_interval_minutes / 10  # Small fraction of the interval
-        interpolated_df['Is_Original_Point'] = False
-        
-        for orig_time in df['Time_Minutes']:
-            mask = abs(interpolated_df['Time_Minutes'] - orig_time) < tolerance
-            interpolated_df.loc[mask, 'Is_Original_Point'] = True
-        
-        # Preserve original datetime if it exists
-        if 'Original_DateTime' in df.columns:
-            # Create interpolation function for mapping time minutes back to timestamps
-            datetime_col = df.columns[0]
-            if pd.api.types.is_datetime64_any_dtype(df[datetime_col]):
-                start_time = df[datetime_col].min()
-                
-                # Function to convert minutes back to datetime
-                def minutes_to_datetime(minutes):
-                    return start_time + pd.Timedelta(minutes=minutes)
-                
-                # Apply the function to get datetime values for all points
-                interpolated_df[datetime_col] = interpolated_df['Time_Minutes'].apply(minutes_to_datetime)
-                
-                # For original points, use the exact original datetime
-                for i, row in df.iterrows():
-                    orig_time = row['Time_Minutes']
-                    orig_dt = row[datetime_col]
-                    mask = abs(interpolated_df['Time_Minutes'] - orig_time) < tolerance
-                    interpolated_df.loc[mask, datetime_col] = orig_dt
-                
-                # Store original datetime strings
-                interpolated_df['Original_DateTime'] = df['Original_DateTime'].iloc[0]  # Initialize with a value
-                for i, row in df.iterrows():
-                    orig_time = row['Time_Minutes']
-                    orig_dt_str = row['Original_DateTime']
-                    mask = abs(interpolated_df['Time_Minutes'] - orig_time) < tolerance
-                    interpolated_df.loc[mask, 'Original_DateTime'] = orig_dt_str
-        
         # Get numeric columns (excluding time and stage columns)
         numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-        exclude_cols = ['Time_Minutes', 'Is_Original_Point']
+        exclude_cols = ['Time_Minutes']
         if 'Stage' in df.columns:
             exclude_cols.append('Stage')
         
@@ -177,20 +147,6 @@ class ExperimentalDataProcessor:
                     # Create interpolation function
                     f = interp1d(x, y, kind='cubic', bounds_error=False, fill_value='extrapolate')
                     interpolated_df[col] = f(target_time)
-                    
-                    # For non-original points that are too far from any real data, set to NaN
-                    max_gap = config.MAX_INTERPOLATION_GAP_MINUTES if hasattr(config, 'MAX_INTERPOLATION_GAP_MINUTES') else 60 * 24  # Default 1 day
-                    
-                    # Find gaps larger than max_gap in the original data
-                    sorted_x = np.sort(x)
-                    gaps = sorted_x[1:] - sorted_x[:-1]
-                    gap_starts = sorted_x[:-1][gaps > max_gap]
-                    gap_ends = sorted_x[1:][gaps > max_gap]
-                    
-                    # Set values in large gaps to NaN
-                    for gap_start, gap_end in zip(gap_starts, gap_ends):
-                        gap_mask = (interpolated_df['Time_Minutes'] > gap_start) & (interpolated_df['Time_Minutes'] < gap_end)
-                        interpolated_df.loc[gap_mask, col] = np.nan
                 else:
                     print(f"Warning: Not enough data points for cubic interpolation of {col}")
                     interpolated_df[col] = np.nan
@@ -215,34 +171,6 @@ class ExperimentalDataProcessor:
         
         return interpolated_df
     
-    def filter_valid_time_points(self, df):
-        """Filter out points that don't have enough valid data"""
-        # Count non-NaN values in each row
-        numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-        exclude_cols = ['Time_Minutes', 'Is_Original_Point']
-        if 'Stage' in df.columns:
-            exclude_cols.append('Stage')
-        
-        data_columns = [col for col in numeric_columns if col not in exclude_cols]
-        
-        # If there are no data columns, return the original df
-        if not data_columns:
-            return df
-            
-        # Count valid data points in each row
-        df['Valid_Data_Count'] = df[data_columns].notna().sum(axis=1)
-        
-        # Determine minimum required valid data points (configurable)
-        min_valid_data = config.MIN_VALID_DATA_POINTS if hasattr(config, 'MIN_VALID_DATA_POINTS') else 1
-        
-        # Keep rows that are original points or have enough valid data
-        valid_df = df[(df['Is_Original_Point']) | (df['Valid_Data_Count'] >= min_valid_data)]
-        
-        # Drop the utility column
-        valid_df = valid_df.drop('Valid_Data_Count', axis=1)
-        
-        return valid_df
-    
     def slice_by_stages(self, df):
         """
         Slice data by stages using the second column 'Stage' to identify different stages.
@@ -265,14 +193,9 @@ class ExperimentalDataProcessor:
         stage_groups = df.groupby('Stage')
         
         for stage_num, stage_data in stage_groups:
-            # Filter out stages that only consist of interpolated points
-            if not stage_data['Is_Original_Point'].any():
-                print(f"Warning: Stage {stage_num} contains only interpolated points. Excluding.")
-                continue
-                
             stages[int(stage_num)] = stage_data.copy()
         
-        print(f"Found {len(stages)} stages with original data points: {list(stages.keys())}")
+        print(f"Found {len(stages)} stages: {list(stages.keys())}")
         return stages
     
     def create_column_mapping(self, df):
@@ -325,15 +248,8 @@ class ExperimentalDataProcessor:
         all_stages_data = {}
         
         for stage_num, stage_df in stages.items():
-            # Count original vs interpolated points
-            original_points = stage_df['Is_Original_Point'].sum()
-            total_points = len(stage_df)
-            interpolated_points = total_points - original_points
-            
             stage_info = {
                 'row_count': len(stage_df),
-                'original_points': int(original_points),
-                'interpolated_points': int(interpolated_points),
                 'time_range': {
                     'start': float(stage_df['Time_Minutes'].min()),
                     'end': float(stage_df['Time_Minutes'].max()),
@@ -462,38 +378,17 @@ class ExperimentalDataProcessor:
             # Create traces for each column
             traces = []
             for col in available_columns:
-                # Add separate series for original vs interpolated points
                 # Filter out NaN values
                 valid_data = ~stage_df[col].isna()
                 
-                # Create a trace for original data points
-                original_mask = valid_data & stage_df['Is_Original_Point']
-                if original_mask.any():
-                    trace_original = {
-                        'x': stage_df.loc[original_mask, 'Time_Minutes'].tolist(),
-                        'y': stage_df.loc[original_mask, col].tolist(),
-                        'type': 'scatter',
-                        'mode': 'markers',
-                        'name': f'{col} (Original)',
-                        'marker': {
-                            'size': 8,
-                            'opacity': 1.0
-                        }
-                    }
-                    traces.append(trace_original)
-                
-                # Create a trace for interpolated line
-                trace_line = {
+                trace = {
                     'x': stage_df.loc[valid_data, 'Time_Minutes'].tolist(),
                     'y': stage_df.loc[valid_data, col].tolist(),
                     'type': 'scatter',
                     'mode': 'lines',
-                    'name': col,
-                    'line': {
-                        'width': 2
-                    }
+                    'name': col
                 }
-                traces.append(trace_line)
+                traces.append(trace)
             
             # Create layout
             layout = {
@@ -748,19 +643,19 @@ class ExperimentalDataProcessor:
             df['Stage'] = 1
         
         # Perform interpolation
-        print("Performing cubic interpolation...")
-        interpolated_df = self.perform_interpolation(df)
-        
-        # Filter out invalid time points with large gaps
-        print("Filtering out invalid time points with large gaps...")
-        filtered_df = self.filter_valid_time_points(interpolated_df)
+        print("Performing cubic interpolation with gap filtering...")
+        interpolated_df = self.perform_interpolation(
+            df, 
+            target_interval_minutes=config.INTERPOLATION_TARGET_INTERVAL,
+            max_gap_minutes=config.MAX_GAP_MINUTES
+        )
         
         # Create column mapping
-        column_mapping = self.create_column_mapping(filtered_df)
+        column_mapping = self.create_column_mapping(interpolated_df)
         
         # Slice by stages
         print("Slicing data by stages using the Stage column...")
-        stages = self.slice_by_stages(filtered_df)
+        stages = self.slice_by_stages(interpolated_df)
         
         # Save data
         base_filename = os.path.splitext(filename)[0]
