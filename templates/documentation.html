@@ -20,6 +20,8 @@
             <li><a href="#output-data-structure">Output Data Structure</a></li>
             <li><a href="#technical-details">Technical Details</a></li>
             <li><a href="#troubleshooting">Troubleshooting</a></li>
+            <li><a href="#system-diagrams">System Diagrams</a></li>
+            <li><a href="#best-practices">Best Practices</a></li>
         </ul>
     </div>
 
@@ -181,52 +183,660 @@ source venv/bin/activate</code></pre>
     <section id="data-processing">
         <h3>Data Processing</h3>
         
-        <h4>Input Data Format</h4>
-        <p>The processor expects tab-separated text files with:</p>
-        <ul>
-            <li>First column: Date/time information in various formats</li>
-            <li>Second column: Stage identifier (integer values to identify different experimental stages)</li>
-            <li>Remaining columns: Numeric measurement data</li>
-        </ul>
+        <h4>Data Flow Overview</h4>
+        <p>The NH3 Cracking Processor follows a specific data flow:</p>
         
-        <h4>Processing Pipeline</h4>
-        <p>The data processing pipeline consists of the following steps:</p>
+        <pre>
+        Raw Data File (.txt, .csv)
+               ↓
+        Data Reading & Parsing
+               ↓
+        Time Vector Standardization
+               ↓
+        Stage Detection & Separation
+               ↓
+        Data Interpolation
+               ↓
+        JSON File Generation
+               ↓
+        Plotly Visualization Files
+               ↓
+        Web Interface Display
+        </pre>
+        
+        <h4>File Upload Process</h4>
+        <p>To process new experimental data:</p>
         <ol>
-            <li><strong>File Reading</strong>: Read the tab-separated file with automatic encoding detection</li>
-            <li><strong>Time Vector Creation</strong>: Convert datetime strings to a consistent time vector in minutes</li>
-            <li><strong>Stage Detection</strong>: Identify different experimental stages based on the Stage column</li>
-            <li><strong>Data Interpolation</strong>: Perform cubic interpolation to create a consistent time grid</li>
-            <li><strong>Column Mapping</strong>: Analyze and categorize columns based on their content</li>
-            <li><strong>Data Export</strong>: Export processed data in CSV and JSON formats</li>
-            <li><strong>Visualization Generation</strong>: Create interactive visualizations for different data views</li>
+            <li>Place raw data files in the <code>Uploads</code> folder or use the web upload interface</li>
+            <li>The system processes files with these naming conventions:
+                <ul>
+                    <li>YY_MM_DD HH_MM_SS Exp XXX_...  (standard format)</li>
+                    <li>YY_MM_DD HH_MM_SS Exp XXX_#XXXX  (with sample ID)</li>
+                </ul>
+            </li>
+            <li>Processed files are stored in the <code>Reports</code> folder in experiment-specific directories</li>
         </ol>
+        
+        <h4>Data Processing Details</h4>
+        <p>The processing pipeline includes several key steps:</p>
+        
+        <h5>1. Data Reading</h5>
+        <p>The <code>read_data_file</code> method attempts to read data using different encodings and delimiters:</p>
+        <pre><code>def read_data_file(self, filename):
+    """
+    Read a data file with multiple encoding and delimiter attempts
+    """
+    encodings = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252']
+    delimiters = [',', '\t', ';']
+    
+    for encoding in encodings:
+        for delimiter in delimiters:
+            try:
+                file_path = os.path.join(self.input_folder, filename)
+                df = pd.read_csv(file_path, delimiter=delimiter, encoding=encoding, 
+                                low_memory=False, on_bad_lines='skip')
+                
+                # If successful, process the dataframe
+                df = self.clean_column_names(df)
+                return df
+            except Exception as e:
+                continue
+                
+    raise ValueError(f"Could not read file {filename} with any encoding/delimiter combination")</code></pre>
+        
+        <h5>2. Time Vector Creation</h5>
+        <p>The <code>create_time_vector</code> method standardizes timestamps:</p>
+        <pre><code>def create_time_vector(self, df):
+    """
+    Create a standardized time vector from timestamp column
+    """
+    # Check for time column using multiple possible names
+    time_col = None
+    for col in ['Time', 'time', 'timestamp', 'Timestamp', 'Date Time', 'DateTime']:
+        if col in df.columns:
+            time_col = col
+            break
+    
+    if time_col is None:
+        raise ValueError("No time column found in dataframe")
+        
+    # Convert to datetime and create relative time in minutes
+    df['datetime'] = pd.to_datetime(df[time_col], errors='coerce')
+    start_time = df['datetime'].min()
+    df['time_minutes'] = (df['datetime'] - start_time).dt.total_seconds() / 60
+    
+    return df</code></pre>
+        
+        <h5>3. Stage Detection</h5>
+        <p>The <code>slice_by_stages</code> method detects and separates experimental stages:</p>
+        <pre><code>def slice_by_stages(self, df):
+    """
+    Detect stage changes and split dataframe into stage-specific dataframes
+    """
+    # Use temperature gradient to detect stage changes
+    temp_col = self.find_column_by_pattern(df, ['temp', 'temperature', 'T'])
+    if not temp_col:
+        raise ValueError("No temperature column found for stage detection")
+    
+    # Calculate temperature gradient
+    df['temp_gradient'] = df[temp_col].diff().rolling(window=5).mean()
+    
+    # Find significant gradient changes
+    threshold = 5.0  # °C/min threshold
+    change_points = df[abs(df['temp_gradient']) > threshold].index.tolist()
+    
+    # Add start and end points
+    all_points = [0] + change_points + [len(df)-1]
+    all_points = sorted(set(all_points))
+    
+    # Create stage dataframes
+    stages = []
+    for i in range(len(all_points)-1):
+        start = all_points[i]
+        end = all_points[i+1]
+        if end - start > 10:  # Minimum 10 points per stage
+            stage_df = df.iloc[start:end+1].copy()
+            stage_df['stage'] = i+1
+            stages.append(stage_df)
+    
+    return stages</code></pre>
+        
+        <h5>4. Data Interpolation</h5>
+        <p>The <code>perform_interpolation</code> method creates a consistent time grid:</p>
+        <pre><code>def perform_interpolation(self, df, target_interval_minutes=1):
+    """
+    Interpolate data to a consistent time grid
+    """
+    # Get time range
+    min_time = df['time_minutes'].min()
+    max_time = df['time_minutes'].max()
+    
+    # Create target time points
+    target_times = np.arange(min_time, max_time, target_interval_minutes)
+    
+    # Create new dataframe with interpolated values
+    interp_df = pd.DataFrame({'time_minutes': target_times})
+    
+    # Interpolate numeric columns
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    for col in numeric_cols:
+        if col != 'time_minutes' and col != 'stage':
+            # Use linear interpolation
+            interp_func = interp1d(
+                df['time_minutes'], 
+                df[col], 
+                bounds_error=False, 
+                fill_value='extrapolate'
+            )
+            interp_df[col] = interp_func(target_times)
+    
+    return interp_df</code></pre>
+        
+        <h5>5. Plotly JSON Generation</h5>
+        <p>The <code>create_stage_plotly_json</code> method creates interactive plot data:</p>
+        <pre><code>def create_stage_plotly_json(self, stage_df, stage_num, base_filename, output_dir):
+    """
+    Create Plotly JSON files for stage visualization
+    """
+    plot_types = {
+        'temperature': {
+            'patterns': ['temp', 'T '],
+            'title': f'Temperature Profile - Stage {stage_num}',
+            'y_axis': 'Temperature (°C)',
+            'line_color': 'rgba(255, 0, 0, 1)'
+        },
+        'pressure': {
+            'patterns': ['press', 'P '],
+            'title': f'Pressure Profile - Stage {stage_num}',
+            'y_axis': 'Pressure (Bar)',
+            'line_color': 'rgba(0, 0, 255, 1)'
+        },
+        'flow': {
+            'patterns': ['flow', 'F '],
+            'title': f'Flow Profile - Stage {stage_num}',
+            'y_axis': 'Flow Rate (ml/min)',
+            'line_color': 'rgba(0, 128, 0, 1)'
+        }
+    }
+    
+    for plot_type, settings in plot_types.items():
+        # Find relevant columns
+        columns = [col for col in stage_df.columns if any(pattern in col.lower() for pattern in settings['patterns'])]
+        
+        if not columns:
+            continue
+            
+        # Create traces for each column
+        traces = []
+        for col in columns:
+            # Filter out NaN values
+            valid_data = stage_df[['time_minutes', col]].dropna()
+            
+            if len(valid_data) < 2:
+                continue
+                
+            trace = {
+                'x': valid_data['time_minutes'].tolist(),
+                'y': valid_data[col].tolist(),
+                'mode': 'lines',
+                'name': col,
+                'line': {'color': settings['line_color']}
+            }
+            traces.append(trace)
+            
+        if not traces:
+            continue
+            
+        # Create layout
+        layout = {
+            'title': settings['title'],
+            'xaxis': {'title': 'Time (minutes)'},
+            'yaxis': {'title': settings['y_axis']},
+            'showlegend': True
+        }
+        
+        # Create plot data
+        plot_data = {
+            'data': traces,
+            'layout': layout
+        }
+        
+        # Save to JSON file
+        output_filename = f'{base_filename}_stage_{stage_num}_{plot_type}_plotly_data.json'
+        output_path = os.path.join(output_dir, output_filename)
+        
+        with open(output_path, 'w') as f:
+            json.dump(plot_data, f, cls=NumpyEncoder)
+            
+        print(f"Created {plot_type} plot for Stage {stage_num}: {output_filename}")</code></pre>
+        
+        <h4>JSON File Fixing</h4>
+        <p>The <code>fix_plotly_json_files</code> method fixes JSON files with NaN values:</p>
+        <pre><code>def fix_plotly_json_files(self, experiment_name):
+    """
+    Fix JSON files with NaN values for a specific experiment
+    """
+    exp_dir = os.path.join(self.output_folder, experiment_name)
+    if not os.path.exists(exp_dir):
+        raise ValueError(f"Experiment directory not found: {exp_dir}")
+    
+    json_files = [f for f in os.listdir(exp_dir) if f.endswith('.json')]
+    fixed_count = 0
+    
+    for json_file in json_files:
+        file_path = os.path.join(exp_dir, json_file)
+        try:
+            # Read the file content
+            with open(file_path, 'r') as f:
+                content = f.read()
+            
+            # Replace NaN values with null
+            modified_content = content.replace('NaN', 'null').replace('Infinity', 'null').replace('-Infinity', 'null')
+            
+            # Write back if changes were made
+            if content != modified_content:
+                with open(file_path, 'w') as f:
+                    f.write(modified_content)
+                fixed_count += 1
+                print(f"Fixed {json_file}")
+        except Exception as e:
+            print(f"Error fixing {json_file}: {str(e)}")
+    
+    return fixed_count</code></pre>
     </section>
 
     <section id="visualization">
-        <h3>Visualization</h3>
+        <h3>Data Visualization</h3>
         
-        <h4>Plotly Integration</h4>
-        <p>The application uses Plotly to create interactive visualizations. Plotly data is generated in JSON format and served to the frontend through the API.</p>
+        <h4>Visualization Features</h4>
+        <p>The application provides several types of interactive visualizations:</p>
         
-        <h4>Data Categories</h4>
-        <p>The application categorizes measurements into logical groups:</p>
+        <h5>1. Overall Experiment Plots</h5>
+        <p>Displays the entire experiment with all stages:</p>
         <ul>
-            <li><strong>Temperature</strong>: Main temperature measurements (R1/2 T read, Saturator T read, etc.)</li>
-            <li><strong>Multipoint Temperature</strong>: Temperature measurements at multiple points</li>
-            <li><strong>Saturator Temperature</strong>: Specialized view for saturator temperature</li>
-            <li><strong>Pressure</strong>: Pressure measurements across different parts of the system</li>
-            <li><strong>Flow</strong>: Flow rates and related measurements</li>
-            <li><strong>Outlet Composition</strong>: Composition measurements of the outlet stream</li>
+            <li><strong>Temperature Profiles</strong>: Shows temperature variations across the entire experiment</li>
+            <li><strong>Pressure Profiles</strong>: Displays pressure measurements for the entire duration</li>
+            <li><strong>Flow Rate Profiles</strong>: Shows flow rate variations throughout the experiment</li>
+            <li><strong>Custom Categories</strong>: Groups related variables into customized plots</li>
         </ul>
         
-        <h4>Visualization Types</h4>
-        <p>The application provides several types of visualizations:</p>
-        <ol>
-            <li><strong>Overall Plot</strong>: Shows all measurements across all stages</li>
-            <li><strong>Category Plots</strong>: Shows measurements grouped by category</li>
-            <li><strong>Stage Plots</strong>: Shows all measurements for a specific stage</li>
-            <li><strong>DateTime Vector Visualization</strong>: Shows measurements with precise time positioning</li>
-        </ol>
+        <h5>2. Stage-Specific Plots</h5>
+        <p>Detailed plots for individual experimental stages:</p>
+        <ul>
+            <li><strong>Stage Temperature</strong>: Fine-grained temperature data for a specific stage</li>
+            <li><strong>Stage Pressure</strong>: Detailed pressure measurements for a specific stage</li>
+            <li><strong>Stage Flow Rates</strong>: Flow rate data isolated to a specific stage</li>
+            <li><strong>Stage Categories</strong>: Category-based plots for specific stages</li>
+        </ul>
+        
+        <h5>3. Interactive Features</h5>
+        <p>All plots include powerful interactive features:</p>
+        <ul>
+            <li><strong>Zoom</strong>: Select regions of interest for detailed examination</li>
+            <li><strong>Pan</strong>: Move through the data timeline</li>
+            <li><strong>Hover Information</strong>: Display exact values by hovering over data points</li>
+            <li><strong>Legend Toggle</strong>: Show/hide specific data series</li>
+            <li><strong>Export</strong>: Download plots as PNG images</li>
+            <li><strong>Reset</strong>: Return to the original view</li>
+        </ul>
+        
+        <h4>Plot Generation Process</h4>
+        <p>The visualization system follows these steps to create interactive plots:</p>
+        
+        <h5>1. Data Preparation</h5>
+        <pre><code># From Main_Web_ProcessorNH3Crack.py
+def create_plotly_json(self, stages, base_filename, timestamp, output_dir):
+    """
+    Create overall plots combining all stages
+    """
+    # Combine stage dataframes
+    combined_df = pd.concat(stages)
+    
+    # Create column mapping based on patterns
+    column_mapping = self.create_column_mapping(combined_df)
+    
+    # Create overall plot for each category
+    for category, columns in column_mapping.items():
+        if not columns:
+            continue
+            
+        # Create traces for each column
+        traces = []
+        for col in columns:
+            # Filter out NaN values for plotting
+            valid_data = combined_df[['time_minutes', 'stage', col]].dropna()
+            
+            # Skip if insufficient data
+            if len(valid_data) < 2:
+                continue
+                
+            # Create trace for this column
+            trace = {
+                'x': valid_data['time_minutes'].tolist(),
+                'y': valid_data[col].tolist(),
+                'mode': 'lines',
+                'name': col,
+                'line': {'width': 1.5}
+            }
+            traces.append(trace)
+            
+        # Create layout
+        layout = {
+            'title': f'{category.capitalize()} Profile - All Stages',
+            'xaxis': {'title': 'Time (minutes)'},
+            'yaxis': {'title': f'{category.capitalize()} Value'},
+            'showlegend': True,
+            'hovermode': 'closest'
+        }
+        
+        # Create shape objects for stage boundaries
+        shapes = []
+        for i in range(len(stages)-1):
+            end_time = stages[i]['time_minutes'].max()
+            shape = {
+                'type': 'line',
+                'x0': end_time,
+                'y0': 0,
+                'x1': end_time,
+                'y1': 1,
+                'yref': 'paper',
+                'line': {
+                    'color': 'rgba(0, 0, 0, 0.5)',
+                    'width': 1,
+                    'dash': 'dash'
+                }
+            }
+            shapes.append(shape)
+        
+        layout['shapes'] = shapes
+        
+        # Create plot data
+        plot_data = {
+            'data': traces,
+            'layout': layout
+        }
+        
+        # Save to JSON file
+        output_filename = f'{base_filename}_{category}_plotly_data.json'
+        output_path = os.path.join(output_dir, output_filename)
+        
+        with open(output_path, 'w') as f:
+            json.dump(plot_data, f, cls=NumpyEncoder)</code></pre>
+        
+        <h5>2. Category-Based Plots</h5>
+        <pre><code># From Main_Web_ProcessorNH3Crack.py
+def create_category_plotly_jsons(self, stages, base_filename, timestamp, exp_dir):
+    """
+    Create category-based plots for specific variable groupings
+    """
+    # Combine all stages
+    combined_df = pd.concat(stages)
+    
+    # Get categories from config
+    categories = config.CATEGORIES
+    
+    for category_name, category_info in categories.items():
+        # Get columns that match the patterns
+        column_patterns = category_info['patterns']
+        columns = []
+        
+        for pattern in column_patterns:
+            matching_cols = [col for col in combined_df.columns 
+                            if re.search(pattern, col, re.IGNORECASE)]
+            columns.extend(matching_cols)
+        
+        # Skip if no matching columns
+        if not columns:
+            continue
+            
+        # Create traces for each column
+        traces = []
+        for col in columns:
+            # Filter out NaN values
+            valid_data = combined_df[['time_minutes', 'stage', col]].dropna()
+            
+            if len(valid_data) < 2:
+                continue
+                
+            trace = {
+                'x': valid_data['time_minutes'].tolist(),
+                'y': valid_data[col].tolist(),
+                'mode': 'lines',
+                'name': col,
+                'line': {'width': 1.5}
+            }
+            traces.append(trace)
+            
+        if not traces:
+            continue
+            
+        # Create layout
+        layout = {
+            'title': f'{category_info["title"]} - All Stages',
+            'xaxis': {'title': 'Time (minutes)'},
+            'yaxis': {'title': category_info['y_axis']},
+            'showlegend': True,
+            'hovermode': 'closest'
+        }
+        
+        # Add stage boundary lines
+        shapes = []
+        for i in range(len(stages)-1):
+            end_time = stages[i]['time_minutes'].max()
+            shape = {
+                'type': 'line',
+                'x0': end_time,
+                'y0': 0,
+                'x1': end_time,
+                'y1': 1,
+                'yref': 'paper',
+                'line': {
+                    'color': 'rgba(0, 0, 0, 0.5)',
+                    'width': 1,
+                    'dash': 'dash'
+                }
+            }
+            shapes.append(shape)
+        
+        layout['shapes'] = shapes
+        
+        # Create plot data
+        plot_data = {
+            'data': traces,
+            'layout': layout
+        }
+        
+        # Save to JSON file
+        output_filename = f'{base_filename}_{category_name}_plotly_data.json'
+        output_path = os.path.join(exp_dir, output_filename)
+        
+        with open(output_path, 'w') as f:
+            json.dump(plot_data, f, cls=NumpyEncoder)</code></pre>
+        
+        <h5>3. Client-Side Rendering</h5>
+        <p>The web interface uses Plotly.js to render the JSON plot data:</p>
+        <pre><code>// From experiment.html
+function loadStageData(stage) {
+    currentStage = stage;
+    
+    // Get plot type from the active button
+    const activeBtn = document.querySelector('.plot-type-btn.active');
+    const plotType = activeBtn ? activeBtn.getAttribute('data-type') : 'temperature';
+    
+    // Clear existing plot
+    document.getElementById('stage-plot').innerHTML = '';
+    
+    // Show loading spinner
+    document.getElementById('stage-plot').innerHTML = '&lt;div class="spinner">&lt;/div>';
+    
+    // Fetch plot data from the server
+    fetch(`/api/experiment/${experimentName}/stage/${stage}?type=${plotType}`)
+        .then(response => response.json())
+        .then(plotData => {
+            // Remove spinner
+            document.getElementById('stage-plot').innerHTML = '';
+            
+            // Create plot
+            Plotly.newPlot('stage-plot', plotData.data, plotData.layout, {responsive: true});
+            
+            // Update stage info
+            updateStageInfo(stage);
+        })
+        .catch(error => {
+            console.error('Error loading stage data:', error);
+            document.getElementById('stage-plot').innerHTML = '&lt;p class="error">Error loading plot data&lt;/p>';
+        });
+}</code></pre>
+        
+        <h4>Visualization Configuration</h4>
+        <p>Plot styles and categories are configured in <code>config.py</code>:</p>
+        <pre><code># From config.py
+# Plot categories for grouping related variables
+CATEGORIES = {
+    'temperature': {
+        'patterns': ['temp', 'T '],
+        'title': 'Temperature Profiles',
+        'y_axis': 'Temperature (°C)',
+        'color_scale': 'Reds'
+    },
+    'pressure': {
+        'patterns': ['press', 'P '],
+        'title': 'Pressure Profiles',
+        'y_axis': 'Pressure (Bar)',
+        'color_scale': 'Blues'
+    },
+    'flow': {
+        'patterns': ['flow', 'F '],
+        'title': 'Flow Rate Profiles',
+        'y_axis': 'Flow Rate (ml/min)',
+        'color_scale': 'Greens'
+    },
+    'composition': {
+        'patterns': ['comp', 'conc', '%', 'ppm'],
+        'title': 'Composition Analysis',
+        'y_axis': 'Concentration',
+        'color_scale': 'Viridis'
+    },
+    'conversion': {
+        'patterns': ['conv', 'yield', 'efficiency'],
+        'title': 'Conversion Metrics',
+        'y_axis': 'Conversion (%)',
+        'color_scale': 'Plasma'
+    }
+}</code></pre>
+        
+        <h4>User Interface Controls</h4>
+        <p>The UI provides several controls for manipulating visualizations:</p>
+        
+        <h5>1. Plot Type Selection</h5>
+        <pre><code>&lt;div class="plot-type-buttons">
+    &lt;button class="plot-type-btn active" data-type="temperature">Temperature&lt;/button>
+    &lt;button class="plot-type-btn" data-type="pressure">Pressure&lt;/button>
+    &lt;button class="plot-type-btn" data-type="flow">Flow&lt;/button>
+    &lt;button class="plot-type-btn" data-type="composition">Composition&lt;/button>
+    &lt;button class="plot-type-btn" data-type="conversion">Conversion&lt;/button>
+&lt;/div></code></pre>
+        
+        <h5>2. Stage Navigation</h5>
+        <pre><code>&lt;div class="stage-navigation">
+    &lt;button id="prev-stage" class="nav-btn">&lt;i class="fas fa-chevron-left">&lt;/i>&lt;/button>
+    &lt;span id="stage-indicator">Stage 1 of 10&lt;/span>
+    &lt;button id="next-stage" class="nav-btn">&lt;i class="fas fa-chevron-right">&lt;/i>&lt;/button>
+&lt;/div></code></pre>
+        
+        <h5>3. Plot Actions</h5>
+        <pre><code>&lt;div class="plot-controls">
+    &lt;h3>Actions&lt;/h3>
+    &lt;button id="process-btn" class="btn">Reprocess Data&lt;/button>
+    &lt;button id="visualize-btn" class="btn">Regenerate Visualizations&lt;/button>
+    &lt;button id="fix-json-btn" class="btn">Fix JSON Files&lt;/button>
+&lt;/div></code></pre>
+        
+        <h4>Advanced Visualization Features</h4>
+        
+        <h5>1. Stage Boundaries</h5>
+        <p>Vertical dashed lines indicate boundaries between experimental stages:</p>
+        <pre><code>// Add stage boundary lines
+shapes = []
+for i in range(len(stages)-1):
+    end_time = stages[i]['time_minutes'].max()
+    shape = {
+        'type': 'line',
+        'x0': end_time,
+        'y0': 0,
+        'x1': end_time,
+        'y1': 1,
+        'yref': 'paper',
+        'line': {
+            'color': 'rgba(0, 0, 0, 0.5)',
+            'width': 1,
+            'dash': 'dash'
+        }
+    }
+    shapes.append(shape)</code></pre>
+        
+        <h5>2. Annotations</h5>
+        <p>Text annotations can be added to highlight important events:</p>
+        <pre><code>// Example annotations
+annotations = [
+    {
+        'x': stage_start_time,
+        'y': max_temp,
+        'text': f'Stage {stage_num} Start',
+        'showarrow': true,
+        'arrowhead': 3,
+        'ax': 0,
+        'ay': -40
+    },
+    {
+        'x': critical_event_time,
+        'y': critical_event_value,
+        'text': 'Critical Event',
+        'showarrow': true,
+        'arrowhead': 2,
+        'ax': 20,
+        'ay': -20
+    }
+]</code></pre>
+        
+        <h5>3. Custom Formatting</h5>
+        <p>Hover templates can be customized to show detailed information:</p>
+        <pre><code>trace = {
+    'x': valid_data['time_minutes'].tolist(),
+    'y': valid_data[col].tolist(),
+    'mode': 'lines',
+    'name': col,
+    'line': {'width': 1.5},
+    'hovertemplate': 
+        '&lt;b>Time:&lt;/b> %{x:.2f} min&lt;br>' +
+        '&lt;b>Value:&lt;/b> %{y:.2f}&lt;br>' +
+        '&lt;b>Stage:&lt;/b> ' + str(stage_num) +
+        '&lt;extra>&lt;/extra>'
+}</code></pre>
+        
+        <h5>4. Layout Customization</h5>
+        <p>Plot layouts can be extensively customized:</p>
+        <pre><code>layout = {
+    'title': {
+        'text': f'{category.capitalize()} Profile - All Stages',
+        'font': {'size': 24, 'color': '#333'}
+    },
+    'xaxis': {
+        'title': 'Time (minutes)',
+        'gridcolor': '#eee',
+        'zeroline': False
+    },
+    'yaxis': {
+        'title': f'{category.capitalize()} Value',
+        'gridcolor': '#eee',
+        'zeroline': False
+    },
+    'plot_bgcolor': '#fff',
+    'paper_bgcolor': '#fff',
+    'showlegend': True,
+    'hovermode': 'closest',
+    'margin': {'l': 60, 'r': 20, 't': 60, 'b': 60}
+}</code></pre>
     </section>
 
     <section id="directory-structure">
@@ -277,25 +887,219 @@ source venv/bin/activate</code></pre>
     <section id="technical-details">
         <h3>Technical Details</h3>
         
-        <h4>Dependencies</h4>
-        <p>The application requires the following Python libraries:</p>
+        <h4>Application Architecture</h4>
+        <p>The NH3 Cracking Processor and Visualizer is built using a modern web application architecture:</p>
         <ul>
-            <li>Flask</li>
-            <li>Pandas</li>
-            <li>NumPy</li>
-            <li>SciPy</li>
-            <li>Plotly</li>
-            <li>Werkzeug</li>
-            <li>Jinja2</li>
+            <li><strong>Backend</strong>: Python Flask web framework handles HTTP requests, data processing, and API endpoints</li>
+            <li><strong>Data Processing</strong>: Custom Python classes process raw experimental data using pandas and numpy</li>
+            <li><strong>Visualization</strong>: Plotly.js generates interactive data visualizations on the client side</li>
+            <li><strong>Frontend</strong>: HTML, CSS, and JavaScript with a responsive design for desktop and tablet devices</li>
         </ul>
         
         <h4>Core Components</h4>
-        <p>The application consists of the following core components:</p>
+        <p>The application consists of several core components:</p>
+        
+        <h5>1. ExperimentalDataProcessor</h5>
+        <p>This is the main data processing class (<code>Main_Web_ProcessorNH3Crack.py</code>) that handles:</p>
         <ul>
-            <li><strong>ExperimentalDataProcessor</strong>: Handles data processing and visualization generation</li>
-            <li><strong>WebInterface</strong>: Provides the user interface for managing experiments and visualizing data</li>
-            <li><strong>API</strong>: Allows programmatic access to the application's functionality</li>
+            <li>Reading raw data files with multiple encoding support</li>
+            <li>Converting datetime strings to consistent time vectors</li>
+            <li>Detecting and separating experimental stages</li>
+            <li>Performing data interpolation for consistent time grids</li>
+            <li>Generating Plotly-compatible JSON files for visualization</li>
+            <li>Creating specialized category-based visualizations</li>
+            <li>Fixing JSON files with NaN values that cause parsing errors</li>
         </ul>
+        
+        <pre><code>class ExperimentalDataProcessor:
+    def __init__(self, input_folder="uploads", output_folder="Reports"):
+        self.input_folder = input_folder
+        self.output_folder = output_folder
+        self.ensure_folders_exist()
+    
+    # Key methods include:
+    # - read_data_file(filename)
+    # - create_time_vector(df)
+    # - perform_interpolation(df, target_interval_minutes=1)
+    # - slice_by_stages(df)
+    # - create_column_mapping(df)
+    # - save_stage_data(stages, column_mapping, base_filename)
+    # - create_stage_plotly_json(stage_df, stage_num, base_filename, output_dir)
+    # - create_plotly_json(stages, base_filename, timestamp, output_dir)
+    # - create_category_plotly_jsons(stages, base_filename, timestamp, exp_dir)
+    # - process_file(filename)
+    # - fix_plotly_json_files(experiment_name)</code></pre>
+        
+        <h5>2. Flask Web Application</h5>
+        <p>The main application (<code>app.py</code>) provides:</p>
+        <ul>
+            <li>Web interface for uploading, viewing, and managing experiments</li>
+            <li>RESTful API for programmatic access to functionality</li>
+            <li>Error handling and logging capabilities</li>
+            <li>Static file serving and URL routing</li>
+        </ul>
+        
+        <h5>3. Configuration System</h5>
+        <p>The <code>config.py</code> file centralizes application settings:</p>
+        <ul>
+            <li>Directory paths and file settings</li>
+            <li>Visualization settings and plot colors</li>
+            <li>Data category definitions</li>
+            <li>File processing settings</li>
+        </ul>
+        
+        <h4>Utility Scripts</h4>
+        <p>The application includes several utility scripts for different purposes:</p>
+        
+        <h5>1. test_server.py</h5>
+        <p>A lightweight test server that provides endpoints for testing plot data retrieval:</p>
+        <ul>
+            <li><code>/test/overall</code>: Test endpoint for overall experiment plot data</li>
+            <li><code>/test/stage/&lt;stage_num&gt;</code>: Test endpoint for specific stage plot data</li>
+        </ul>
+        
+        <h5>2. test_paths.py</h5>
+        <p>A utility script to check and validate file paths and JSON files:</p>
+        <ul>
+            <li>Verifies that experiment directories and plot files exist</li>
+            <li>Validates JSON files for syntax errors</li>
+            <li>Reports detailed file information</li>
+        </ul>
+        
+        <h5>3. test_connection.py</h5>
+        <p>Tests network connectivity to the application servers:</p>
+        <ul>
+            <li>Attempts multiple connections with configurable retry logic</li>
+            <li>Reports detailed connection status information</li>
+            <li>Can test both the main app and basic test app</li>
+        </ul>
+        
+        <h5>4. setup_and_run.py</h5>
+        <p>A comprehensive setup script that:</p>
+        <ul>
+            <li>Creates necessary directories</li>
+            <li>Checks for required files</li>
+            <li>Installs dependencies</li>
+            <li>Runs the application</li>
+        </ul>
+        
+        <h5>5. run.py</h5>
+        <p>A runner script for the Flask application:</p>
+        <ul>
+            <li>Configures command-line arguments</li>
+            <li>Sets up logging</li>
+            <li>Starts the Flask web server</li>
+        </ul>
+        
+        <h5>6. quick_start.py</h5>
+        <p>A script to quickly process files and start the web interface:</p>
+        <ul>
+            <li>Processes all files in the uploads folder</li>
+            <li>Reports processing results</li>
+            <li>Launches the web interface</li>
+        </ul>
+        
+        <h5>7. fix_plots.py</h5>
+        <p>A utility to regenerate plots for specific experiments:</p>
+        <ul>
+            <li>Loads stage data from existing JSON files</li>
+            <li>Regenerates Plotly JSON files for each stage</li>
+            <li>Creates overall plots for the experiment</li>
+        </ul>
+        
+        <h5>8. fix_json_nan.py</h5>
+        <p>A utility to fix JSON files with NaN values:</p>
+        <ul>
+            <li>Replaces 'NaN', 'Infinity', and '-Infinity' with 'null'</li>
+            <li>Can process a single experiment or all experiments</li>
+            <li>Reports detailed results of the fixing process</li>
+        </ul>
+        
+        <h5>9. debug_app.py</h5>
+        <p>A version of the app with enhanced debugging:</p>
+        <ul>
+            <li>Configures detailed logging</li>
+            <li>Registers custom error handlers</li>
+            <li>Runs the app in debug mode</li>
+        </ul>
+        
+        <h5>10. basic_app.py</h5>
+        <p>A minimal Flask application for testing:</p>
+        <ul>
+            <li>Provides basic routes for connectivity testing</li>
+            <li>Can be used to diagnose network or setup issues</li>
+        </ul>
+        
+        <h4>API Reference</h4>
+        <p>The application provides a comprehensive RESTful API:</p>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Endpoint</th>
+                    <th>Method</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>/api/experiments</code></td>
+                    <td>GET</td>
+                    <td>Get a list of all processed experiments</td>
+                </tr>
+                <tr>
+                    <td><code>/api/experiment/&lt;experiment_name&gt;/overall</code></td>
+                    <td>GET</td>
+                    <td>Get overall plot data for an experiment (query param: type)</td>
+                </tr>
+                <tr>
+                    <td><code>/api/experiment/&lt;experiment_name&gt;/stage/&lt;stage_num&gt;</code></td>
+                    <td>GET</td>
+                    <td>Get plot data for a specific stage (query param: type)</td>
+                </tr>
+                <tr>
+                    <td><code>/api/process/&lt;experiment_name&gt;</code></td>
+                    <td>GET</td>
+                    <td>Process or reprocess an experiment</td>
+                </tr>
+                <tr>
+                    <td><code>/api/process-all</code></td>
+                    <td>GET</td>
+                    <td>Process all files in the uploads folder</td>
+                </tr>
+                <tr>
+                    <td><code>/api/visualize/&lt;experiment_name&gt;</code></td>
+                    <td>GET</td>
+                    <td>Regenerate visualizations for an experiment</td>
+                </tr>
+                <tr>
+                    <td><code>/api/experiment/&lt;experiment_name&gt;/fix-json</code></td>
+                    <td>GET</td>
+                    <td>Fix JSON files with NaN values for an experiment</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h4>Logging System</h4>
+        <p>The application uses a comprehensive logging system with multiple log levels:</p>
+        <ul>
+            <li><strong>INFO</strong>: Normal operation logs, including requests and successful operations</li>
+            <li><strong>WARNING</strong>: Non-critical issues that may require attention</li>
+            <li><strong>ERROR</strong>: Critical issues that prevent normal operation</li>
+            <li><strong>DEBUG</strong>: Detailed debugging information (only in debug mode)</li>
+        </ul>
+        
+        <p>Log files are stored in the <code>logs</code> directory:</p>
+        <ul>
+            <li><code>app.log</code>: Main application log</li>
+            <li><code>app_debug.log</code>: Debug-level logging (when running in debug mode)</li>
+        </ul>
+        
+        <p>Example log entry:</p>
+        <pre><code>2025-05-29 19:56:00,884 - app - INFO - Looking for plot file at: reports\24_11_05 15_51_42 Exp 28_#2666_6\24_11_05 15_51_42 Exp 28_#2666_6_temp_plotly_data.json
+2025-05-29 19:56:00,884 - app - INFO - File exists: True
+2025-05-29 19:56:00,884 - app - INFO - Absolute path: C:\Development\041 NH3 Cracking\reports\24_11_05 15_51_42 Exp 28_#2666_6\24_11_05 15_51_42 Exp 28_#2666_6_temp_plotly_data.json
+2025-05-29 19:56:01,005 - werkzeug - INFO - 127.0.0.1 - - [29/May/2025 19:56:01] "GET /api/experiment/24_11_05%2015_51_42%20Exp%2028_%232666_6/overall?type=temperature HTTP/1.1" 200 -</code></pre>
     </section>
 
     <section id="troubleshooting">
@@ -303,24 +1107,283 @@ source venv/bin/activate</code></pre>
         
         <h4>Common Issues</h4>
         
-        <h5>Error: "No such file or directory"</h5>
-        <p>This error occurs when the application can't find a requested file. Make sure:</p>
+        <h5>1. JSON Parsing Errors</h5>
+        <p>If you encounter errors related to JSON parsing in the web interface:</p>
         <ul>
-            <li>The file exists in the specified location</li>
-            <li>The file name is correctly spelled (case-sensitive)</li>
-            <li>The application has permission to access the file</li>
+            <li><strong>Symptom</strong>: Plots fail to load with console errors about invalid JSON</li>
+            <li><strong>Cause</strong>: NaN values in JSON files that JavaScript cannot parse</li>
+            <li><strong>Solution</strong>: Use the "Fix JSON Files" button on the experiment page or run the fix_json_nan.py script:
+                <pre><code>python fix_json_nan.py "experiment_name"</code></pre>
+            </li>
         </ul>
         
-        <h5>Error: "Failed with all encodings"</h5>
-        <p>This error occurs when the application can't determine the file encoding. Try:</p>
+        <h5>2. File Encoding Issues</h5>
+        <p>If data files fail to load properly:</p>
         <ul>
-            <li>Saving the file with UTF-8 encoding</li>
-            <li>Checking for invalid characters in the file</li>
-            <li>Ensuring the file is properly formatted (tab-separated)</li>
+            <li><strong>Symptom</strong>: Processing errors or garbled data in plots</li>
+            <li><strong>Cause</strong>: Unusual file encoding or delimiter not recognized by the processor</li>
+            <li><strong>Solution</strong>: Check the file encoding and format. The processor attempts multiple encodings (utf-8, latin1, iso-8859-1, cp1252) and delimiters (comma, tab, semicolon), but some files may require manual pre-processing.</li>
         </ul>
         
-        <h5>Error: "Not enough data points for cubic interpolation"</h5>
-        <p>This error occurs when a column doesn't have enough data points for cubic interpolation. The application requires at least 4 data points for cubic interpolation.</p>
+        <h5>3. Stage Detection Issues</h5>
+        <p>If experimental stages are not correctly identified:</p>
+        <ul>
+            <li><strong>Symptom</strong>: Too few or too many stages detected</li>
+            <li><strong>Cause</strong>: Temperature gradient threshold may not be appropriate for the specific experiment</li>
+            <li><strong>Solution</strong>: Adjust the gradient threshold in the <code>slice_by_stages</code> method or manually define stages if needed.</li>
+        </ul>
+        
+        <h5>4. Missing Plot Data</h5>
+        <p>If plots are missing specific data series:</p>
+        <ul>
+            <li><strong>Symptom</strong>: Expected data series do not appear in plots</li>
+            <li><strong>Cause</strong>: Column names may not match the expected patterns</li>
+            <li><strong>Solution</strong>: Check the column naming in the raw data file and adjust the pattern matching in the processor or in the configuration file.</li>
+        </ul>
+        
+        <h4>Debugging Tools</h4>
+        
+        <h5>1. debug_app.py</h5>
+        <p>Run the application with enhanced debugging:</p>
+        <pre><code>python debug_app.py</code></pre>
+        <p>This provides detailed logging and error messages.</p>
+        
+        <h5>2. test_paths.py</h5>
+        <p>Verify file paths and JSON validity:</p>
+        <pre><code>python test_paths.py "experiment_name"</code></pre>
+        
+        <h5>3. Logging</h5>
+        <p>Check the log files for detailed information:</p>
+        <ul>
+            <li><code>app.log</code>: Main application log</li>
+            <li><code>app_debug.log</code>: Debug-level logging</li>
+        </ul>
+        
+        <h5>4. Browser Developer Tools</h5>
+        <p>Use browser developer tools to inspect:</p>
+        <ul>
+            <li>Network requests to see raw API responses</li>
+            <li>Console errors for JavaScript issues</li>
+            <li>Element inspector for UI problems</li>
+        </ul>
+    </section>
+
+    <section id="system-diagrams">
+        <h3>System Diagrams</h3>
+        
+        <h4>Application Architecture</h4>
+        <pre>
+┌───────────────────────────────────────────────────────────────────────┐
+│                         NH3 Cracking Processor                         │
+└───────────────────────────────────────────────────────────────────────┘
+                                    │
+                ┌─────────────────────────────────────┐
+                │                                     │
+┌───────────────▼───────────────┐      ┌─────────────▼─────────────┐
+│       Web Interface           │      │    Data Processing         │
+│  ┌─────────────────────────┐  │      │ ┌─────────────────────┐   │
+│  │      Flask Routes       │  │      │ │ ExperimentalData    │   │
+│  │  ┌──────────────────┐  │  │      │ │    Processor        │   │
+│  │  │  Route Handlers  │  │  │      │ │ ┌─────────────────┐ │   │
+│  │  └──────────────────┘  │  │      │ │ │ Data Reading    │ │   │
+│  └─────────────────────────┘  │      │ │ └─────────────────┘ │   │
+│              │                │      │ │ ┌─────────────────┐ │   │
+│  ┌─────────────────────────┐  │      │ │ │ Time Vector     │ │   │
+│  │      API Endpoints      │  │      │ │ └─────────────────┘ │   │
+│  └─────────────────────────┘  │      │ │ ┌─────────────────┐ │   │
+│              │                │      │ │ │ Stage Detection │ │   │
+│  ┌─────────────────────────┐  │      │ │ └─────────────────┘ │   │
+│  │    Template Rendering   │  │      │ │ ┌─────────────────┐ │   │
+│  └─────────────────────────┘  │      │ │ │ Interpolation   │ │   │
+└───────────────┬───────────────┘      │ │ └─────────────────┘ │   │
+                │                      │ │ ┌─────────────────┐ │   │
+┌───────────────▼───────────────┐      │ │ │ Plot Generation │ │   │
+│     Static Files & Assets     │      │ │ └─────────────────┘ │   │
+│  ┌─────────────────────────┐  │      │ └─────────────────────┘   │
+│  │       CSS Styles        │  │      │             │              │
+│  └─────────────────────────┘  │      │  ┌──────────▼────────────┐ │
+│  ┌─────────────────────────┐  │      │  │   JSON File Handler   │ │
+│  │     Client-side JS      │  │      │  └─────────────────────────┘
+│  └─────────────────────────┘  │      └─────────────┬─────────────┘
+└───────────────┬───────────────┘                    │
+                │                                    │
+┌───────────────▼───────────────────────────────────▼───────────────┐
+│                          File System                               │
+│  ┌─────────────────────┐    ┌───────────────────────────┐  │
+│  │    Uploads Folder   │    │         Reports Folder       │  │
+│  │  (Raw Data Files)   │    │  (Processed Data & Plot Files)  │   │
+│  └─────────────────────┘    └─────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────┘</pre>
+        
+        <h4>Data Flow Diagram</h4>
+        <pre>
+┌──────────────┐     ┌───────────────┐     ┌────────────────┐
+│  Raw Data    │     │  Process File │     │ Stage Detection│
+│  Upload      ├────►│  Function     ├────►│ Algorithm      │
+└──────────────┘     └───────────────┘     └────────┬───────┘
+                                                    │
+                    ┌─────────────────────────────────────────┐
+                    │                                         │
+        ┌───────────▼───────────┐               ┌────────────▼─────────┐
+        │ Time Vector Creation  │               │ Data Interpolation   │
+        └───────────┬───────────┘               └────────────┬─────────┘
+                    │                                        │
+                    └────────────────┬─────────────────────┬┘
+                                     │                     │
+                         ┌───────────▼────────┐   ┌───────▼────────────┐
+                         │ Stage Data Storage │   │ Category Mapping   │
+                         └───────────┬────────┘   └────────┬───────────┘
+                                     │                     │
+                                     └─────────┬───────────┘
+                                               │
+                                    ┌──────────▼───────────┐
+                                    │ Plotly JSON Creation │
+                                    └──────────┬───────────┘
+                                               │
+                      ┌─────────────────────────────────────────────┐
+                      │                                             │
+           ┌──────────▼─────────┐                     ┌─────────────▼────────┐
+           │ Overall Plot JSON  │                     │ Stage Plot JSON      │
+           └──────────┬─────────┘                     └─────────────┬────────┘
+                      │                                             │
+           ┌──────────▼─────────┐                     ┌─────────────▼────────┐
+           │ Web API Endpoints  │                     │ Web API Endpoints    │
+           └──────────┬─────────┘                     └─────────────┬────────┘
+                      │                                             │
+                      └────────────────┬─────────────────────────┬─┘
+                                       │                         │
+                           ┌───────────▼────────┐     ┌──────────▼─────────┐
+                           │ Plotly.js Renderer │     │ User Interactions  │
+                           └────────────────────┘     └────────────────────┘</pre>
+        
+        <h4>Web Interface to Backend Flow</h4>
+        <pre>
+┌───────────────────────────────────────────────────────────────────────────┐
+│                           Web Browser                                      │
+│                                                                           │
+│  ┌─────────────────────────────────────┐                                  │
+│  │          HTML Templates              │                                  │
+│  │  ┌─────────────────────────────┐    │                                  │
+│  │  │         index.html          │    │                                  │
+│  │  └─────────────────────────────┘    │                                  │
+│  │  ┌─────────────────────────────┐    │    ┌────────────────────────┐   │
+│  │  │      experiment.html        │    │    │   JavaScript Client    │   │
+│  │  └─────────────────────────────┘    │    │                        │   │
+│  │  ┌─────────────────────────────┐    │    │ ┌────────────────────┐ │   │
+│  │  │     documentation.html      │    │    │ │  AJAX Requests     │ │   │
+│  │  └─────────────────────────────┘    │    │ └────────────────────┘ │   │
+│  └─────────────────────────────────────┘    │ ┌────────────────────┐ │   │
+│                                             │ │  Event Handlers    │ │   │
+│  ┌─────────────────────────────────────┐    │ └────────────────────┘ │   │
+│  │          Plotly Visualizations      │    │ ┌────────────────────┐ │   │
+│  │  ┌─────────────────────────────┐    │    │ │   DOM Updates      │ │   │
+│  │  │         Overall Plot        │◄───┼────┼─┘                    │ │   │
+│  │  └─────────────────────────────┘    │    └────────────────────────┘   │
+│  │  ┌─────────────────────────────┐    │                                  │
+│  │  │         Stage Plots         │◄───┼──┐                               │
+│  │  └─────────────────────────────┘    │  │                               │
+│  └─────────────────────────────────────┘  │                               │
+└───────────────────────────────────────────┼───────────────────────────────┘
+                                            │
+                    HTTP Requests           │
+                          │                 │
+                          ▼                 │
+┌────────────────────────────────────────────────────────────────────────┐
+│                             Flask Server                                │
+│                                                                        │
+│  ┌────────────────────────────────────────┐                            │
+│  │             Route Handlers              │                            │
+│  │                                        │                            │
+│  │  ┌─────────────────────────────────┐   │                            │
+│  │  │          app.route('/')         │   │                            │
+│  │  └─────────────────────────────────┘   │                            │
+│  │  ┌─────────────────────────────────┐   │                            │
+│  │  │  app.route('/experiment/<name>') │   │                            │
+│  │  └─────────────────────────────────┘   │                            │
+│  │  ┌─────────────────────────────────┐   │                            │
+│  │  │   app.route('/api/experiment/   │   │                            │
+│  │  │     <name>/overall')            │   │                            │
+│  │  └─────────────────────────────────┘   │                            │
+│  │  ┌─────────────────────────────────┐   │                            │
+│  │  │   app.route('/api/experiment/   │   │                            │
+│  │  │    <name>/stage/<stage_num>')   │   │                            │
+│  │  └─────────────────────────────────┘   │                            │
+│  │  ┌─────────────────────────────────┐   │                            │
+│  │  │   app.route('/api/experiment/   │   │                            │
+│  │  │      <name>/fix-json')          │   │                            │
+│  │  └─────────────────────────────────┘   │                            │
+│  └────────────────────────────────────────┘                            │
+│                                                                        │
+│  ┌────────────────────────────────────────┐                            │
+│  │    ExperimentalDataProcessor Class      │                            │
+│  │                                        │                            │
+│  │  ┌─────────────────────────────────┐   │                            │
+│  │  │        process_file()           │   │                            │
+│  │  └─────────────────────────────────┘   │                            │
+│  │  ┌─────────────────────────────────┐   │                            │
+│  │  │      create_plotly_json()       │   │                            │
+│  │  └─────────────────────────────────┘   │                            │
+│  │  ┌─────────────────────────────────┐   │                            │
+│  │  │   create_stage_plotly_json()    │   │                            │
+│  │  └─────────────────────────────────┘   │                            │
+│  │  ┌─────────────────────────────────┐   │                            │
+│  │  │  create_category_plotly_jsons() │   │                            │
+│  │  └─────────────────────────────────┘   │                            │
+│  │  ┌─────────────────────────────────┐   │                            │
+│  │  │    fix_plotly_json_files()      │   │                            │
+│  │  └─────────────────────────────────┘   │                            │
+│  └────────────────────────────────────────┘                            │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                           File System                                   │
+│                                                                        │
+│  ┌─────────────────────────────────┐    ┌───────────────────────────┐  │
+│  │         Uploads Folder          │    │      Reports Folder       │  │
+│  │                                 │    │                           │  │
+│  │  ┌─────────────────────────┐    │    │  ┌─────────────────────┐  │  │
+│  │  │   Raw Experiment Data   │    │    │  │  Experiment Folders │  │  │
+│  │  │       (.txt, .csv)      │    │    │  │                     │  │  │
+│  │  └─────────────────────────┘    │    │  │ ┌─────────────────┐ │  │  │
+│  └─────────────────────────────────┘    │  │ │  JSON Data Files│ │  │  │
+│                                         │  │ └─────────────────┘ │  │  │
+│                                         │  │ ┌─────────────────┐ │  │  │
+│                                         │  │ │ Plotly Plot JSON│ │  │  │
+│                                         │  │ └─────────────────┘ │  │  │
+│                                         │  └─────────────────────┘  │  │
+│                                         └───────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────┘</pre>
+    </section>
+    
+    <section id="best-practices">
+        <h3>Best Practices</h3>
+        
+        <h4>Data Preparation</h4>
+        <ul>
+            <li><strong>Consistent Column Naming</strong>: Use consistent naming conventions for data columns to ensure proper categorization</li>
+            <li><strong>Time Format</strong>: Ensure timestamp columns use a recognized datetime format</li>
+            <li><strong>File Format</strong>: Use UTF-8 encoded CSV files with comma delimiters when possible</li>
+            <li><strong>File Naming</strong>: Follow the standard naming convention: "YY_MM_DD HH_MM_SS Exp XXX_..."</li>
+        </ul>
+        
+        <h4>Application Usage</h4>
+        <ul>
+            <li><strong>Regular Maintenance</strong>: Periodically run the JSON fixing utility to prevent parsing errors</li>
+            <li><strong>Performance Optimization</strong>: Delete unnecessary files from the Uploads folder once processed</li>
+            <li><strong>Data Backup</strong>: Regularly back up the Reports folder</li>
+            <li><strong>Update Strategy</strong>: When updating the application, back up the config.py file to preserve custom settings</li>
+        </ul>
+        
+        <h4>Development Extensions</h4>
+        <p>When extending the application:</p>
+        <ul>
+            <li><strong>Processor Customization</strong>: Extend the ExperimentalDataProcessor class for specialized processing</li>
+            <li><strong>New Plot Types</strong>: Add new categories in config.py and update the create_category_plotly_jsons method</li>
+            <li><strong>API Extensions</strong>: Follow the existing pattern for adding new API endpoints</li>
+            <li><strong>UI Enhancements</strong>: Use the existing CSS classes for consistent styling</li>
+        </ul>
     </section>
 </div>
 {% endblock %} 
