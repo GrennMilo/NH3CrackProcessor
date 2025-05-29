@@ -12,6 +12,19 @@ from plotly.utils import PlotlyJSONEncoder
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
+# Custom JSON encoder to handle NaN values
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.integer, np.floating, np.bool_)):
+            return obj.item()
+        if pd.isna(obj):
+            return None
+        if np.isnan(obj):
+            return None
+        if np.isinf(obj):
+            return None
+        return super().default(obj)
+
 class ExperimentalDataProcessor:
     def __init__(self, input_folder="uploads", output_folder="Reports"):
         self.input_folder = input_folder
@@ -251,7 +264,7 @@ class ExperimentalDataProcessor:
             json_filename = f"stage_{stage_num}_data.json"
             json_path = os.path.join(stage_dir, json_filename)
             with open(json_path, 'w') as f:
-                json.dump(stage_data, f, indent=2, default=str)
+                json.dump(stage_data, f, indent=2, cls=CustomJSONEncoder)
             print(f"Saved Stage {stage_num} JSON: {json_path}")
             
             # Create Plotly JSON files for stage with different plots
@@ -261,7 +274,7 @@ class ExperimentalDataProcessor:
         # Save summary JSON in experiment directory
         summary_path = os.path.join(exp_dir, "experiment_summary.json")
         with open(summary_path, 'w') as f:
-            json.dump(summary, f, indent=2, default=str)
+            json.dump(summary, f, indent=2, cls=CustomJSONEncoder)
         print(f"Saved experiment summary: {summary_path}")
         
         # Save complete JSON with all stages
@@ -273,7 +286,7 @@ class ExperimentalDataProcessor:
         }
         
         with open(json_path, 'w') as f:
-            json.dump(complete_data, f, indent=2, default=str)
+            json.dump(complete_data, f, indent=2, cls=CustomJSONEncoder)
         print(f"Saved complete JSON: {json_path}")
         
         # Save complete CSV (all stages)
@@ -350,9 +363,12 @@ class ExperimentalDataProcessor:
             # Create traces for each column
             traces = []
             for col in available_columns:
+                # Filter out NaN values
+                valid_data = ~stage_df[col].isna()
+                
                 trace = {
-                    'x': stage_df['Time_Minutes'].tolist(),
-                    'y': stage_df[col].tolist(),
+                    'x': stage_df.loc[valid_data, 'Time_Minutes'].tolist(),
+                    'y': stage_df.loc[valid_data, col].tolist(),
                     'type': 'scatter',
                     'mode': 'lines',
                     'name': col
@@ -378,7 +394,7 @@ class ExperimentalDataProcessor:
             # Save to file
             output_path = os.path.join(output_dir, group_info['filename'])
             with open(output_path, 'w') as f:
-                json.dump(plotly_data, f, indent=2, cls=PlotlyJSONEncoder)
+                json.dump(plotly_data, f, indent=2, cls=CustomJSONEncoder)
     
     def create_plotly_json(self, stages, base_filename, timestamp, output_dir):
         """Create multiple Plotly-compatible JSON files for all stages with focused plots"""
@@ -468,9 +484,12 @@ class ExperimentalDataProcessor:
                 
                 # Create traces for each column
                 for col in available_columns:
+                    # Filter out NaN values
+                    valid_data = ~stage_df[col].isna()
+                    
                     trace = {
-                        'x': stage_df['Time_Minutes'].tolist(),
-                        'y': stage_df[col].tolist(),
+                        'x': stage_df.loc[valid_data, 'Time_Minutes'].tolist(),
+                        'y': stage_df.loc[valid_data, col].tolist(),
                         'type': 'scatter',
                         'mode': 'lines',
                         'name': f'Stage {stage_num} - {col}',
@@ -484,7 +503,7 @@ class ExperimentalDataProcessor:
                 # Save Plotly JSON
                 output_path = os.path.join(output_dir, group_info['filename'])
                 with open(output_path, 'w') as f:
-                    json.dump(plotly_data, f, indent=2, cls=PlotlyJSONEncoder)
+                    json.dump(plotly_data, f, indent=2, cls=CustomJSONEncoder)
             else:
                 print(f"Warning: No data available for {group_name} plot")
     
@@ -524,9 +543,12 @@ class ExperimentalDataProcessor:
                 
                 # Create a trace for each column in this category
                 for col in available_columns:
+                    # Filter out NaN values
+                    valid_data = ~stage_df[col].isna()
+                    
                     trace = {
-                        'x': stage_df['Time_Minutes'].tolist(),
-                        'y': stage_df[col].tolist(),
+                        'x': stage_df.loc[valid_data, 'Time_Minutes'].tolist(),
+                        'y': stage_df.loc[valid_data, col].tolist(),
                         'type': 'scatter',
                         'mode': 'lines',
                         'name': f'Stage {stage_num} - {col}',
@@ -575,7 +597,7 @@ class ExperimentalDataProcessor:
             plot_path = os.path.join(exp_dir, plot_filename)
             
             with open(plot_path, 'w') as f:
-                json.dump(plotly_data, f, indent=2, cls=PlotlyJSONEncoder)
+                json.dump(plotly_data, f, indent=2, cls=CustomJSONEncoder)
             
             print(f"Saved {category_name} plot: {plot_path}")
         
@@ -621,4 +643,59 @@ class ExperimentalDataProcessor:
         self.save_stage_data(stages, column_mapping, base_filename)
         
         print("Processing completed successfully!")
+        
+    def fix_plotly_json_files(self, experiment_name):
+        """Fix existing Plotly JSON files by removing NaN values"""
+        print(f"Fixing Plotly JSON files for {experiment_name}")
+        
+        # Get experiment directory
+        exp_dir = os.path.join(self.output_folder, experiment_name)
+        if not os.path.exists(exp_dir):
+            print(f"Error: Experiment directory not found at {exp_dir}")
+            return False
+        
+        # Find all JSON files in the experiment directory and its subdirectories
+        json_files = []
+        for root, dirs, files in os.walk(exp_dir):
+            for file in files:
+                if file.endswith('.json'):
+                    json_files.append(os.path.join(root, file))
+        
+        print(f"Found {len(json_files)} JSON files to check")
+        
+        # Process each JSON file
+        fixed_count = 0
+        
+        for file_path in json_files:
+            try:
+                # Read the file as text
+                with open(file_path, 'r') as f:
+                    content = f.read()
+                
+                # Check if file contains NaN
+                if 'NaN' in content or 'nan' in content:
+                    print(f"Fixing {os.path.basename(file_path)}")
+                    
+                    # Replace NaN values with null
+                    fixed_content = content.replace('NaN', 'null').replace('nan', 'null')
+                    fixed_content = fixed_content.replace('Infinity', 'null').replace('infinity', 'null')
+                    fixed_content = fixed_content.replace('-Infinity', 'null').replace('-infinity', 'null')
+                    
+                    # Try to parse the JSON to ensure it's valid
+                    try:
+                        json.loads(fixed_content)
+                    except json.JSONDecodeError as e:
+                        print(f"Warning: Could not parse fixed JSON in {file_path}: {e}")
+                        continue
+                    
+                    # Write the fixed content back to the file
+                    with open(file_path, 'w') as f:
+                        f.write(fixed_content)
+                    
+                    fixed_count += 1
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
+        
+        print(f"Fixed {fixed_count} out of {len(json_files)} JSON files")
+        return True
 

@@ -115,6 +115,13 @@
         <div class="loading">Select a stage to view data</div>
     </div>
 </div>
+
+<div class="plot-controls">
+    <h3>Actions</h3>
+    <button id="process-btn" class="btn">Reprocess Data</button>
+    <button id="visualize-btn" class="btn">Regenerate Visualizations</button>
+    <button id="fix-json-btn" class="btn">Fix JSON Files</button>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -479,6 +486,45 @@
         // Initial load
         loadOverallPlot();
     });
+
+    // Button functionality
+    document.getElementById('process-btn').addEventListener('click', function() {
+        processExperiment();
+    });
+    
+    document.getElementById('visualize-btn').addEventListener('click', function() {
+        regenerateVisualizations();
+    });
+    
+    document.getElementById('fix-json-btn').addEventListener('click', function() {
+        fixJsonFiles();
+    });
+    
+    // Function to fix JSON files
+    function fixJsonFiles() {
+        const fixJsonBtn = document.getElementById('fix-json-btn');
+        fixJsonBtn.disabled = true;
+        fixJsonBtn.textContent = 'Fixing...';
+        
+        fetch(`/api/experiment/${experimentName}/fix-json`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('JSON files fixed successfully! Reloading page...');
+                    location.reload();
+                } else {
+                    alert(`Error: ${data.message}`);
+                    fixJsonBtn.disabled = false;
+                    fixJsonBtn.textContent = 'Fix JSON Files';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while fixing JSON files');
+                fixJsonBtn.disabled = false;
+                fixJsonBtn.textContent = 'Fix JSON Files';
+            });
+    }
 </script>
 
 <style>

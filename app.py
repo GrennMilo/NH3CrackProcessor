@@ -604,6 +604,41 @@ def documentation():
     """Documentation page with information about the application"""
     return render_template('documentation.html')
 
+@app.route('/api/experiment/<experiment_name>/fix-json', methods=['GET'])
+def api_fix_experiment_json(experiment_name):
+    """API endpoint to fix JSON files with NaN values for a specific experiment"""
+    try:
+        experiment_name = urllib.parse.unquote(experiment_name)
+        logger.info(f"Fixing JSON files for experiment: {experiment_name}")
+        
+        # Initialize processor
+        processor = ExperimentalDataProcessor(
+            input_folder=app.config['UPLOAD_FOLDER'],
+            output_folder=app.config['REPORTS_FOLDER']
+        )
+        
+        # Fix JSON files
+        success = processor.fix_plotly_json_files(experiment_name)
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": f"Successfully fixed JSON files for experiment '{experiment_name}'"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": f"Failed to fix JSON files for experiment '{experiment_name}'"
+            }), 404
+    
+    except Exception as e:
+        logger.error(f"Error fixing JSON files for experiment {experiment_name}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Error: {str(e)}",
+            "traceback": traceback.format_exc()
+        }), 500
+
 # Run the application
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8080) 
