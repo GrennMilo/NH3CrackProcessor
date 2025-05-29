@@ -5,663 +5,317 @@
 {% block content %}
 <div class="card">
     <a href="{{ url_for('index') }}" class="back-link">← Back to Experiments</a>
-    <h2>{{ experiment.name }}</h2>
+    <h2>Experiment: {{ experiment.name }}</h2>
     
-    <div class="experiment-info">
-        <p>
-            <strong>Stages:</strong> {{ experiment.stages|length }}<br>
-            <strong>Data Points:</strong> {{ experiment.summary.processing_statistics.total_data_points if experiment.summary and experiment.summary.processing_statistics and experiment.summary.processing_statistics.total_data_points else 'N/A' }}<br>
-            <strong>GC Data:</strong> {{ 'Yes' if experiment.summary and experiment.summary.processing_statistics and experiment.summary.processing_statistics.data_coverage and experiment.summary.processing_statistics.data_coverage.gc_data else 'No' }}
-        </p>
-    </div>
-    
-    <div class="action-buttons">
-        <button id="btn-process" class="action-btn">Process Experiment</button>
-        <button id="btn-visualize" class="action-btn">Regenerate Visualizations</button>
-    </div>
-</div>
-
-<div class="card">
-    <h3>Overall Campaign Data</h3>
-    <div class="plot-controls">
-        <div class="control-group">
-            <label for="overall-plot-type">Plot Type:</label>
-            <select id="overall-plot-type" aria-label="Select plot type">
-                <option value="line" selected>Line</option>
-                <option value="scatter">Scatter</option>
-            </select>
-        </div>
-        <div class="control-group">
-            <label for="overall-plot-theme">Theme:</label>
-            <select id="overall-plot-theme" aria-label="Select plot theme">
-                <option value="plotly_dark" selected>Dark</option>
-                <option value="plotly">Light</option>
-            </select>
-        </div>
-        <div class="control-group">
-            <label for="overall-data-type">Data Category:</label>
-            <select id="overall-data-type" aria-label="Select data category">
-                <option value="temperature" selected>Temperature</option>
-                <option value="multipoint">Multipoint Thermocouples</option>
-                <option value="saturator">Saturator Temperature</option>
-                <option value="pressure">Pressure</option>
-                <option value="flow">Flow</option>
-                <option value="outlet">Outlet Stream</option>
-            </select>
-        </div>
-    </div>
-    <div id="overall-plot" class="plot-container">
-        <div class="loading">Loading overall plot...</div>
-    </div>
-</div>
-
-<div class="card">
-    <h3>Stage Selection</h3>
-    
-    {% if experiment.stages|length > 100 %}
-        <p>This experiment has {{ experiment.stages|length }} stages. Use the controls below to navigate.</p>
+    {% if experiment.summary and experiment.summary.metadata %}
+    <div class="experiment-metadata">
+        <p><strong>Processed:</strong> {{ experiment.summary.metadata.processed_at }}</p>
+        <p><strong>Stages:</strong> {{ experiment.summary.metadata.total_stages }}</p>
         
-        <div class="stage-groups">
-            <input type="text" id="stage-search" class="stage-search" placeholder="Search for stage...">
-            
-            <div>
-                <button class="stage-group-btn" data-group="1-100">1-100</button>
-                <button class="stage-group-btn" data-group="101-200">101-200</button>
-                <button class="stage-group-btn" data-group="201-300">201-300</button>
-                <button class="stage-group-btn" data-group="301-400">301-400</button>
-                <button class="stage-group-btn" data-group="401-500">401-500</button>
-                <button class="stage-group-btn" data-group="501+">501+</button>
-            </div>
+        {% if experiment.total_original_points is defined %}
+        <div class="data-points-info">
+            <h3>Data Points</h3>
+            <p><strong>Original Data Points:</strong> {{ experiment.total_original_points }}</p>
+            <p><strong>Interpolated Data Points:</strong> {{ experiment.total_interpolated_points }}</p>
+            <p><strong>Interpolation Percentage:</strong> {{ "%.2f"|format(experiment.interpolation_percentage) }}%</p>
+            <p class="info-message">Original data points are shown as markers on the plots, while interpolated points appear only as lines.</p>
         </div>
+        {% endif %}
+    </div>
     {% endif %}
     
-    <div class="stage-selector" id="stage-selector">
-        {% for stage in experiment.stages %}
-            <div class="stage-item" data-stage="{{ stage.number }}">{{ stage.number }}</div>
-        {% endfor %}
-    </div>
-</div>
-
-<div class="card" id="stage-view" style="display: none;">
-    <h3>Stage <span id="stage-number"></span></h3>
     <div class="plot-controls">
         <div class="control-group">
-            <label for="stage-plot-type">Plot Type:</label>
-            <select id="stage-plot-type" aria-label="Select stage plot type">
-                <option value="line" selected>Line</option>
-                <option value="scatter">Scatter</option>
-            </select>
-        </div>
-        <div class="control-group">
-            <label for="stage-x-axis">X-Axis:</label>
-            <select id="stage-x-axis" aria-label="Select x-axis type">
-                <option value="RelativeTime" selected>Relative Time</option>
-                <option value="Date">Date/Time</option>
-            </select>
-        </div>
-        <div class="control-group">
-            <label for="stage-data-type">Data Category:</label>
-            <select id="stage-data-type" aria-label="Select data category">
-                <option value="temperature" selected>Temperature</option>
-                <option value="multipoint">Multipoint Thermocouples</option>
+            <label for="plot-type-selector">Plot Type:</label>
+            <select id="plot-type-selector">
+                <option value="temperature">Temperature</option>
+                <option value="multipoint">Multipoint Temperature</option>
                 <option value="saturator">Saturator Temperature</option>
                 <option value="pressure">Pressure</option>
                 <option value="flow">Flow</option>
-                <option value="outlet">Outlet Stream</option>
+                <option value="outlet">Outlet Composition</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label for="display-mode-selector">Display Mode:</label>
+            <select id="display-mode-selector">
+                <option value="line">Line</option>
+                <option value="scatter">Scatter</option>
+                <option value="both">Both Line and Scatter</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label for="data-points-selector">Data Points:</label>
+            <select id="data-points-selector">
+                <option value="all">All Points</option>
+                <option value="original">Only Original</option>
+                <option value="gaps">Show Data Gaps</option>
             </select>
         </div>
     </div>
-    <div id="stage-plot" class="plot-container">
-        <div class="loading">Select a stage to view data</div>
-    </div>
-</div>
-
-<div class="plot-controls">
-    <h3>Actions</h3>
-    <button id="process-btn" class="btn">Reprocess Data</button>
-    <button id="visualize-btn" class="btn">Regenerate Visualizations</button>
-    <button id="fix-json-btn" class="btn">Fix JSON Files</button>
-</div>
-
-<div class="plot-controls">
-    <div class="control-group">
-        <label for="plot-type-selector">Plot Type:</label>
-        <select id="plot-type-selector">
-            <option value="temperature">Temperature</option>
-            <option value="multipoint">Multipoint Temperature</option>
-            <option value="saturator">Saturator Temperature</option>
-            <option value="pressure">Pressure</option>
-            <option value="flow">Flow</option>
-            <option value="outlet">Outlet Composition</option>
-        </select>
+    
+    <div id="plot-container" class="plot-container">
+        <div class="loading">Loading plot...</div>
     </div>
     
-    <div class="control-group">
-        <label for="plot-mode-selector">Data Points:</label>
-        <select id="plot-mode-selector">
-            <option value="original">Original Points Only</option>
-            <option value="all">All Points (Interpolated)</option>
-        </select>
+    {% if experiment.stages %}
+    <h3>Stages</h3>
+    <div class="stage-selector">
+        <div class="stage-item" data-stage="overall">Overall</div>
+        {% for stage in experiment.stages %}
+        <div class="stage-item" data-stage="{{ stage.number }}">Stage {{ stage.number }}</div>
+        {% endfor %}
     </div>
+    {% endif %}
     
-    <div class="control-group">
-        <label for="theme-selector">Theme:</label>
-        <select id="theme-selector">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-        </select>
+    <div class="action-buttons">
+        <button id="process-btn" class="action-btn">Reprocess Data</button>
+        <button id="visualize-btn" class="action-btn">Regenerate Visualizations</button>
+        <button id="fix-json-btn" class="action-btn">Fix JSON Files</button>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 <script>
+    // Global variables
+    let currentStage = 'overall';
+    let currentPlotType = 'temperature';
+    let currentDisplayMode = 'line';
+    let currentDataPoints = 'all';
+    let plotData = null;
+    
+    // Initial load
     document.addEventListener('DOMContentLoaded', function() {
-        // Cache DOM elements
-        const overallPlot = document.getElementById('overall-plot');
-        const stagePlot = document.getElementById('stage-plot');
-        const stageView = document.getElementById('stage-view');
-        const stageNumber = document.getElementById('stage-number');
-        const stageItems = document.querySelectorAll('.stage-item');
-        const stageSelector = document.getElementById('stage-selector');
+        // Load initial plot
+        loadPlot();
         
-        // Plot configuration elements
-        const overallPlotType = document.getElementById('overall-plot-type');
-        const overallPlotTheme = document.getElementById('overall-plot-theme');
-        const overallDataType = document.getElementById('overall-data-type');
-        const stagePlotType = document.getElementById('stage-plot-type');
-        const stageXAxis = document.getElementById('stage-x-axis');
-        const stageDataType = document.getElementById('stage-data-type');
-        
-        // Action buttons
-        const btnProcess = document.getElementById('btn-process');
-        const btnVisualize = document.getElementById('btn-visualize');
-        
-        // Current state
-        let currentStage = null;
-        let stageData = {};
-        let overallData = {};
-        let plotErrorOccurred = false;
-        
-        // Experiment name - properly encoded for API requests
-        const experimentName = encodeURIComponent("{{ experiment.name }}");
-        
-        // Load overall plot
-        function loadOverallPlot() {
-            const loadingElement = overallPlot.querySelector('.loading');
-            loadingElement.style.display = 'block';
-            loadingElement.textContent = 'Loading overall plot...';
-            
-            const dataType = overallDataType.value;
-            
-            fetch(`/api/experiment/${experimentName}/overall?type=${dataType}`)
-                .then(response => {
-                    if (!response.ok) {
-                        return response.json().then(errorData => {
-                            if (errorData.available_types && errorData.available_types.length > 0) {
-                                // If server returned available types, select the first one
-                                overallDataType.value = errorData.available_types[0];
-                                // Update options to only show available types
-                                Array.from(overallDataType.options).forEach(option => {
-                                    option.disabled = !errorData.available_types.includes(option.value);
-                                });
-                                // Try again with the first available type
-                                return fetch(`/api/experiment/${experimentName}/overall?type=${errorData.available_types[0]}`);
-                            }
-                            throw new Error(errorData.error || 'Failed to load overall plot data');
-                        });
-                    }
-                    return response;
-                })
-                .then(response => response.json())
-                .then(data => {
-                    // Check if data is empty or doesn't contain required fields
-                    if (!data || !data.data || data.data.length === 0) {
-                        throw new Error('No plot data available');
-                    }
-                    
-                    overallData = data;
-                    updateOverallPlot();
-                    loadingElement.style.display = 'none';
-                    plotErrorOccurred = false;
-                })
-                .catch(error => {
-                    console.error('Error loading overall plot:', error);
-                    loadingElement.textContent = 'Error loading plot: ' + error.message;
-                    loadingElement.classList.add('error-message');
-                    plotErrorOccurred = true;
-                });
-        }
-        
-        // Update overall plot with current settings
-        function updateOverallPlot() {
-            if (!overallData || !overallData.data) return;
-            
-            // Apply plot type changes
-            const plotType = overallPlotType.value;
-            const updatedData = overallData.data.map(trace => {
-                if (trace.type !== 'scatter') return trace;
-                return {
-                    ...trace,
-                    mode: plotType === 'line' ? 'lines' : 'markers'
-                };
-            });
-            
-            // Apply theme changes
-            const theme = overallPlotTheme.value;
-            const updatedLayout = {
-                ...overallData.layout,
-                template: theme
-            };
-            
-            try {
-                Plotly.react('overall-plot', updatedData, updatedLayout, {responsive: true});
-            } catch (error) {
-                console.error('Error updating plot:', error);
-                const loadingElement = overallPlot.querySelector('.loading');
-                loadingElement.style.display = 'block';
-                loadingElement.textContent = 'Error rendering plot: ' + error.message;
-                loadingElement.classList.add('error-message');
-            }
-        }
-        
-        // Load stage plot
-        function loadStagePlot(stage) {
-            if (currentStage === stage && stageData[stage]) {
-                updateStagePlot();
-                return;
-            }
-            
-            currentStage = stage;
-            const loadingElement = stagePlot.querySelector('.loading');
-            loadingElement.style.display = 'block';
-            loadingElement.textContent = 'Loading stage data...';
-            
-            const dataType = stageDataType.value;
-            
-            // Get plot data for the selected stage and data type
-            fetch(`/api/experiment/${experimentName}/stage/${stage}?type=${dataType}`)
-                .then(response => {
-                    if (!response.ok) {
-                        return response.json().then(errorData => {
-                            if (errorData.available_types && errorData.available_types.length > 0) {
-                                // If server returned available types, select the first one
-                                stageDataType.value = errorData.available_types[0];
-                                // Update options to only show available types
-                                Array.from(stageDataType.options).forEach(option => {
-                                    option.disabled = !errorData.available_types.includes(option.value);
-                                });
-                                // Try again with the first available type
-                                return fetch(`/api/experiment/${experimentName}/stage/${stage}?type=${errorData.available_types[0]}`);
-                            }
-                            throw new Error(errorData.error || `Failed to load stage ${stage} plot data`);
-                        });
-                    }
-                    return response;
-                })
-                .then(response => response.json())
-                .then(data => {
-                    // Check if data is empty or doesn't contain required fields
-                    if (!data || !data.data || data.data.length === 0) {
-                        throw new Error('No stage plot data available');
-                    }
-                    
-                    stageData[stage] = data;
-                    updateStagePlot();
-                    loadingElement.style.display = 'none';
-                })
-                .catch(error => {
-                    console.error(`Error loading stage ${stage} plot:`, error);
-                    loadingElement.textContent = 'Error loading stage data: ' + error.message;
-                    loadingElement.classList.add('error-message');
-                });
-        }
-        
-        // Update stage plot with current settings
-        function updateStagePlot() {
-            if (!currentStage || !stageData[currentStage] || !stageData[currentStage].data) return;
-            
-            const data = stageData[currentStage];
-            
-            // Apply plot type changes
-            const plotType = stagePlotType.value;
-            const updatedData = data.data.map(trace => {
-                if (trace.type !== 'scatter') return trace;
-                // Keep markers for GC data which is typically sparse
-                if (trace.name && trace.name.includes('GC')) {
-                    return {
-                        ...trace,
-                        mode: 'markers+lines'
-                    };
-                }
-                return {
-                    ...trace,
-                    mode: plotType === 'line' ? 'lines' : 'markers'
-                };
-            });
-            
-            // Apply X-axis type if available
-            const xAxisType = stageXAxis.value;
-            // This would require backend support to change the x-axis data
-            
-            try {
-                Plotly.react('stage-plot', updatedData, data.layout, {responsive: true});
-            } catch (error) {
-                console.error('Error updating stage plot:', error);
-                const loadingElement = stagePlot.querySelector('.loading');
-                loadingElement.style.display = 'block';
-                loadingElement.textContent = 'Error rendering stage plot: ' + error.message;
-                loadingElement.classList.add('error-message');
-            }
-        }
-        
-        // Process experiment
-        function processExperiment() {
-            if (!confirm('Process experiment "{{ experiment.name }}"?')) return;
-            
-            const processingMessage = document.createElement('div');
-            processingMessage.className = 'processing-message';
-            processingMessage.textContent = 'Processing experiment...';
-            document.body.appendChild(processingMessage);
-            
-            fetch(`/api/process/${experimentName}`)
-                .then(response => response.json())
-                .then(data => {
-                    document.body.removeChild(processingMessage);
-                    if (data.success) {
-                        alert('Processing complete: ' + data.message);
-                        // Reload the page to show updated data
-                        window.location.reload();
-                    } else {
-                        alert('Processing failed: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    document.body.removeChild(processingMessage);
-                    console.error('Error processing experiment:', error);
-                    alert('Error processing experiment: ' + error.message);
-                });
-        }
-        
-        // Regenerate visualizations
-        function regenerateVisualizations() {
-            if (!confirm('Regenerate visualizations for "{{ experiment.name }}"?')) return;
-            
-            const processingMessage = document.createElement('div');
-            processingMessage.className = 'processing-message';
-            processingMessage.textContent = 'Regenerating visualizations...';
-            document.body.appendChild(processingMessage);
-            
-            fetch(`/api/visualize/${experimentName}`)
-                .then(response => response.json())
-                .then(data => {
-                    document.body.removeChild(processingMessage);
-                    if (data.success) {
-                        alert('Visualization complete: ' + data.message);
-                        // Reload plots
-                        loadOverallPlot();
-                        if (currentStage) loadStagePlot(currentStage);
-                    } else {
-                        alert('Visualization failed: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    document.body.removeChild(processingMessage);
-                    console.error('Error regenerating visualizations:', error);
-                    alert('Error regenerating visualizations: ' + error.message);
-                });
-        }
-        
-        // Event listeners
-        
-        // Plot configuration changes
-        overallPlotType.addEventListener('change', updateOverallPlot);
-        overallPlotTheme.addEventListener('change', updateOverallPlot);
-        overallDataType.addEventListener('change', loadOverallPlot);
-        stagePlotType.addEventListener('change', updateStagePlot);
-        stageDataType.addEventListener('change', function() {
-            loadStagePlot(currentStage);
+        // Setup event listeners
+        document.getElementById('plot-type-selector').addEventListener('change', function() {
+            currentPlotType = this.value;
+            loadPlot();
         });
         
-        if (stageXAxis) {
-            stageXAxis.addEventListener('change', updateStagePlot);
-        }
-        
-        // Stage selection
-        stageSelector.addEventListener('click', function(e) {
-            if (e.target.classList.contains('stage-item')) {
-                const stage = e.target.dataset.stage;
-                
-                // Clear active class from all stages
-                stageItems.forEach(item => item.classList.remove('active'));
-                
-                // Add active class to clicked stage
-                e.target.classList.add('active');
-                
-                // Show stage view
-                stageView.style.display = 'block';
-                stageNumber.textContent = stage;
-                
-                // Load stage plot
-                loadStagePlot(stage);
-                
-                // Scroll to stage view
-                stageView.scrollIntoView({behavior: 'smooth'});
-            }
+        document.getElementById('display-mode-selector').addEventListener('change', function() {
+            currentDisplayMode = this.value;
+            updateDisplayMode();
         });
         
-        // Action buttons
-        if (btnProcess) {
-            btnProcess.addEventListener('click', processExperiment);
-        }
+        document.getElementById('data-points-selector').addEventListener('change', function() {
+            currentDataPoints = this.value;
+            updateDataPointsVisibility();
+        });
         
-        if (btnVisualize) {
-            btnVisualize.addEventListener('click', regenerateVisualizations);
-        }
-        
-        // Stage search
-        const stageSearch = document.getElementById('stage-search');
-        if (stageSearch) {
-            stageSearch.addEventListener('input', function() {
-                const searchValue = this.value.toLowerCase();
-                
-                stageItems.forEach(item => {
-                    const stageNum = item.dataset.stage;
-                    if (stageNum.includes(searchValue)) {
-                        item.style.display = 'inline-block';
-                    } else {
-                        item.style.display = 'none';
-                    }
-                });
+        document.querySelectorAll('.stage-item').forEach(item => {
+            item.addEventListener('click', function() {
+                currentStage = this.getAttribute('data-stage');
+                document.querySelectorAll('.stage-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                loadPlot();
             });
+        });
+        
+        // Set initial active stage
+        document.querySelector('.stage-item[data-stage="overall"]').classList.add('active');
+        
+        // Setup action buttons
+        document.getElementById('process-btn').addEventListener('click', function() {
+            processExperiment();
+        });
+        
+        document.getElementById('visualize-btn').addEventListener('click', function() {
+            regenerateVisualizations();
+        });
+        
+        document.getElementById('fix-json-btn').addEventListener('click', function() {
+            fixJsonFiles();
+        });
+    });
+    
+    // Load plot data from API
+    function loadPlot() {
+        const plotContainer = document.getElementById('plot-container');
+        plotContainer.innerHTML = '<div class="loading">Loading plot...</div>';
+        
+        let url;
+        if (currentStage === 'overall') {
+            url = `/api/experiment/${encodeURIComponent('{{ experiment.name }}')}/overall?type=${currentPlotType}`;
+        } else {
+            url = `/api/experiment/${encodeURIComponent('{{ experiment.name }}')}/stage/${currentStage}?type=${currentPlotType}`;
         }
         
-        // Stage group buttons
-        const stageGroupBtns = document.querySelectorAll('.stage-group-btn');
-        if (stageGroupBtns.length > 0) {
-            stageGroupBtns.forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const group = this.dataset.group;
-                    
-                    // Remove active class from all buttons
-                    stageGroupBtns.forEach(btn => btn.classList.remove('active'));
-                    
-                    // Add active class to clicked button
-                    this.classList.add('active');
-                    
-                    // Filter stages based on group
-                    let min, max;
-                    if (group === '501+') {
-                        min = 501;
-                        max = Infinity;
-                    } else {
-                        [min, max] = group.split('-').map(Number);
-                    }
-                    
-                    stageItems.forEach(item => {
-                        const stageNum = parseInt(item.dataset.stage);
-                        if (stageNum >= min && stageNum <= max) {
-                            item.style.display = 'inline-block';
-                        } else {
-                            item.style.display = 'none';
-                        }
+        fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Failed to load plot data');
                     });
-                });
+                }
+                return response.json();
+            })
+            .then(data => {
+                plotData = data;
+                renderPlot();
+            })
+            .catch(error => {
+                plotContainer.innerHTML = `<div class="error-message">${error.message}</div>`;
             });
+    }
+    
+    // Render plot with Plotly
+    function renderPlot() {
+        if (!plotData) return;
+        
+        // Apply current display mode and data points settings
+        updateDisplayMode();
+        
+        Plotly.newPlot('plot-container', plotData.data, plotData.layout, {
+            responsive: true,
+            displayModeBar: true
+        });
+    }
+    
+    // Update display mode (line/scatter/both)
+    function updateDisplayMode() {
+        if (!plotData) return;
+        
+        const updatedData = plotData.data.map(trace => {
+            const newTrace = {...trace};
             
-            // Activate first group by default
-            stageGroupBtns[0].click();
-        }
+            // Preserve original mode for markers that represent original data points
+            if (trace.name && trace.name.includes('Original')) {
+                newTrace.mode = 'markers';
+            } else {
+                // Apply selected display mode to other traces
+                if (currentDisplayMode === 'line') {
+                    newTrace.mode = 'lines';
+                } else if (currentDisplayMode === 'scatter') {
+                    newTrace.mode = 'markers';
+                } else if (currentDisplayMode === 'both') {
+                    newTrace.mode = 'lines+markers';
+                }
+            }
+            
+            return newTrace;
+        });
         
-        // Initial load
-        loadOverallPlot();
-    });
-
-    // Button functionality
-    document.getElementById('process-btn').addEventListener('click', function() {
-        processExperiment();
-    });
+        // Update data points visibility
+        plotData.data = updatedData;
+        updateDataPointsVisibility();
+    }
     
-    document.getElementById('visualize-btn').addEventListener('click', function() {
-        regenerateVisualizations();
-    });
+    // Update data points visibility based on selection
+    function updateDataPointsVisibility() {
+        if (!plotData) return;
+        
+        const updatedData = plotData.data.map(trace => {
+            const newTrace = {...trace};
+            
+            // Handle visibility based on data points selection
+            if (currentDataPoints === 'original') {
+                // Show only original data points
+                newTrace.visible = trace.name && trace.name.includes('Original') ? true : 'legendonly';
+            } else if (currentDataPoints === 'gaps') {
+                // Show all with highlighted gaps
+                newTrace.visible = true;
+                
+                // Add custom styling for gaps if needed
+                if (newTrace.mode && newTrace.mode.includes('lines')) {
+                    newTrace.line = {...(newTrace.line || {}), connectgaps: false};
+                }
+            } else {
+                // Show all points
+                newTrace.visible = true;
+            }
+            
+            return newTrace;
+        });
+        
+        Plotly.newPlot('plot-container', updatedData, plotData.layout, {
+            responsive: true,
+            displayModeBar: true
+        });
+    }
     
-    document.getElementById('fix-json-btn').addEventListener('click', function() {
-        fixJsonFiles();
-    });
+    // Process experiment data
+    function processExperiment() {
+        if (!confirm('Are you sure you want to reprocess this experiment data?')) return;
+        
+        const processingMsg = document.createElement('div');
+        processingMsg.className = 'processing-message';
+        processingMsg.textContent = 'Processing data... Please wait.';
+        document.body.appendChild(processingMsg);
+        
+        fetch(`/api/process/${encodeURIComponent('{{ experiment.name }}')}`)
+            .then(response => response.json())
+            .then(data => {
+                document.body.removeChild(processingMsg);
+                if (data.success) {
+                    alert('Processing completed successfully.');
+                    window.location.reload();
+                } else {
+                    alert(`Processing failed: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                document.body.removeChild(processingMsg);
+                alert(`Error: ${error.message}`);
+            });
+    }
     
-    // Function to fix JSON files
+    // Regenerate visualizations
+    function regenerateVisualizations() {
+        if (!confirm('Are you sure you want to regenerate all visualizations?')) return;
+        
+        const processingMsg = document.createElement('div');
+        processingMsg.className = 'processing-message';
+        processingMsg.textContent = 'Regenerating visualizations... Please wait.';
+        document.body.appendChild(processingMsg);
+        
+        fetch(`/api/visualize/${encodeURIComponent('{{ experiment.name }}')}`)
+            .then(response => response.json())
+            .then(data => {
+                document.body.removeChild(processingMsg);
+                if (data.success) {
+                    alert('Visualizations regenerated successfully.');
+                    window.location.reload();
+                } else {
+                    alert(`Regeneration failed: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                document.body.removeChild(processingMsg);
+                alert(`Error: ${error.message}`);
+            });
+    }
+    
+    // Fix JSON files
     function fixJsonFiles() {
-        const fixJsonBtn = document.getElementById('fix-json-btn');
-        fixJsonBtn.disabled = true;
-        fixJsonBtn.textContent = 'Fixing...';
+        if (!confirm('Are you sure you want to fix JSON files?')) return;
         
-        fetch(`/api/experiment/${experimentName}/fix-json`)
+        const processingMsg = document.createElement('div');
+        processingMsg.className = 'processing-message';
+        processingMsg.textContent = 'Fixing JSON files... Please wait.';
+        document.body.appendChild(processingMsg);
+        
+        fetch(`/api/experiment/${encodeURIComponent('{{ experiment.name }}')}/fix-json`)
             .then(response => response.json())
             .then(data => {
+                document.body.removeChild(processingMsg);
                 if (data.success) {
-                    alert('JSON files fixed successfully! Reloading page...');
-                    location.reload();
+                    alert('JSON files fixed successfully.');
+                    window.location.reload();
                 } else {
-                    alert(`Error: ${data.message}`);
-                    fixJsonBtn.disabled = false;
-                    fixJsonBtn.textContent = 'Fix JSON Files';
+                    alert(`Fix failed: ${data.message}`);
                 }
             })
             .catch(error => {
-                console.error('Error:', error);
-                alert('An error occurred while fixing JSON files');
-                fixJsonBtn.disabled = false;
-                fixJsonBtn.textContent = 'Fix JSON Files';
+                document.body.removeChild(processingMsg);
+                alert(`Error: ${error.message}`);
             });
     }
-
-    // Function to toggle between original and interpolated data points
-    function togglePlotMode(mode) {
-        const loadingMsg = document.createElement('div');
-        loadingMsg.className = 'loading';
-        loadingMsg.textContent = 'Updating plot mode...';
-        document.getElementById('plot-container').innerHTML = '';
-        document.getElementById('plot-container').appendChild(loadingMsg);
-        
-        fetch(`/api/toggle-plot-mode/${mode}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Reload the current plot with the new mode
-                    loadPlotData(plotType);
-                } else {
-                    alert('Error: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error toggling plot mode:', error);
-                alert('Error toggling plot mode');
-            });
-    }
-    
-    // Add event listener for plot mode selector
-    document.getElementById('plot-mode-selector').addEventListener('change', function() {
-        togglePlotMode(this.value);
-    });
 </script>
-
-<style>
-    .plot-controls {
-        display: flex;
-        gap: 20px;
-        margin-bottom: 15px;
-        padding: 10px;
-        background-color: rgba(60,60,60,0.5);
-        border-radius: 5px;
-        flex-wrap: wrap;
-    }
-    
-    .control-group {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    .control-group label {
-        font-weight: bold;
-        color: #ccc;
-    }
-    
-    .control-group select {
-        background-color: #444;
-        color: #fff;
-        border: 1px solid #666;
-        border-radius: 4px;
-        padding: 5px 10px;
-    }
-    
-    .action-buttons {
-        display: flex;
-        gap: 10px;
-        margin-top: 15px;
-    }
-    
-    .action-btn {
-        background-color: #5072a8;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 8px 15px;
-        cursor: pointer;
-        transition: background-color 0.3s;
-    }
-    
-    .action-btn:hover {
-        background-color: #3a5580;
-    }
-    
-    .loading {
-        text-align: center;
-        padding: 2rem;
-        font-size: 1.2rem;
-        color: var(--text-color);
-    }
-    
-    .error-message {
-        color: #ff6b6b;
-        background-color: rgba(255, 107, 107, 0.1);
-        border: 1px solid rgba(255, 107, 107, 0.3);
-        border-radius: 4px;
-        padding: 1rem;
-    }
-    
-    .processing-message {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background-color: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 20px;
-        border-radius: 8px;
-        z-index: 1000;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-    }
-</style>
 {% endblock %} 

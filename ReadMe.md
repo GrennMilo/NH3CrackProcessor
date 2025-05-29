@@ -708,6 +708,9 @@ def create_time_vector(self, df):
     # Assume first column is datetime
     datetime_col = df.columns[0]
     
+    # Store original datetime strings for reference
+    df['Original_DateTime'] = df[datetime_col].copy()
+    
     # Try different datetime formats
     date_formats = [
         '%d/%m/%y %H:%M:%S',  # DD/MM/YY HH:MM:SS
@@ -728,14 +731,12 @@ def create_time_vector(self, df):
     # Create time vector in minutes from start
     start_time = df[datetime_col].min()
     df['Time_Minutes'] = (df[datetime_col] - start_time).dt.total_seconds() / 60
+    
+    # Mark these as original data points
+    df['Is_Original_Point'] = True
 ```
 
-If datetime parsing fails, the application creates a sequential time vector as a fallback:
-
-```python
-# Fallback: create sequential time vector
-df['Time_Minutes'] = np.arange(len(df))
-```
+If datetime parsing fails, the application creates a sequential time vector as a fallback.
 
 ### Stage Detection
 
@@ -769,6 +770,8 @@ Each stage is stored as a separate dataset and processed independently, allowing
 
 To ensure a consistent time grid across all measurements, the application performs cubic interpolation for all numeric columns. This is particularly important for creating smooth visualizations and for comparing data across different stages.
 
+The application now tracks which data points are from the original input file versus those that are generated through interpolation:
+
 ```python
 def perform_interpolation(self, df, target_interval_minutes=1):
     # Create target time vector with 1-minute intervals
@@ -779,10 +782,13 @@ def perform_interpolation(self, df, target_interval_minutes=1):
     # Create new dataframe for interpolated data
     interpolated_df = pd.DataFrame({'Time_Minutes': target_time})
     
-    # Get numeric columns (excluding time and stage columns)
-    numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-    exclude_cols = ['Time_Minutes', 'Stage']
-    numeric_columns = [col for col in numeric_columns if col not in exclude_cols]
+    # Mark which time points are original vs interpolated
+    interpolated_df['Is_Original_Point'] = False
+    tolerance = target_interval_minutes / 10  # Small fraction of the interval
+    
+    for orig_time in df['Time_Minutes']:
+        mask = abs(interpolated_df['Time_Minutes'] - orig_time) < tolerance
+        interpolated_df.loc[mask, 'Is_Original_Point'] = True
     
     # Interpolate each numeric column
     for col in numeric_columns:
@@ -795,11 +801,40 @@ def perform_interpolation(self, df, target_interval_minutes=1):
             # Create interpolation function
             f = interp1d(x, y, kind='cubic', bounds_error=False, fill_value='extrapolate')
             interpolated_df[col] = f(target_time)
-        else:
-            interpolated_df[col] = np.nan
+            
+            # For non-original points that are too far from any real data, set to NaN
+            max_gap = config.MAX_INTERPOLATION_GAP_MINUTES
+            
+            # Find gaps larger than max_gap in the original data
+            sorted_x = np.sort(x)
+            gaps = sorted_x[1:] - sorted_x[:-1]
+            gap_starts = sorted_x[:-1][gaps > max_gap]
+            gap_ends = sorted_x[1:][gaps > max_gap]
+            
+            # Set values in large gaps to NaN
+            for gap_start, gap_end in zip(gap_starts, gap_ends):
+                gap_mask = (interpolated_df['Time_Minutes'] > gap_start) & 
+                           (interpolated_df['Time_Minutes'] < gap_end)
+                interpolated_df.loc[gap_mask, col] = np.nan
 ```
 
-The application uses cubic interpolation when there are at least 4 data points, which provides smooth curves. For the Stage column, the application uses nearest-neighbor interpolation to maintain the integrity of the stage identifiers.
+The application uses cubic interpolation when there are at least 4 data points, which provides smooth curves. Values in large gaps (configurable, default is 24 hours) are set to NaN to avoid extrapolating data over long periods without measurements.
+
+For the Stage column, the application uses nearest-neighbor interpolation to maintain the integrity of the stage identifiers.
+
+### Handling Data Gaps
+
+The application now automatically identifies and handles data gaps:
+
+1. **Gap Detection**: Identifies gaps in the original data that exceed the configured maximum gap size
+2. **Gap Exclusion**: Sets interpolated values within large gaps to NaN
+3. **Stage Filtering**: Excludes stages that consist only of interpolated points
+4. **Visual Distinction**: Displays original data points as markers and interpolated data as lines
+
+This approach ensures that:
+- The time vector is consistent for visualization
+- No misleading data is generated for long periods without measurements
+- Users can clearly distinguish between original and interpolated data
 
 ### Plotly JSON Generation
 
@@ -1159,6 +1194,16 @@ The web interface allows users to customize visualizations in real-time:
 - **Visibility**: Toggle the visibility of specific data series
 - **Zoom Level**: Zoom in on specific time periods
 - **Data Range**: Focus on specific data ranges
+
+#### 5. Original vs Interpolated Data Views
+
+The application allows users to visualize the distinction between original data points and interpolated data:
+
+- **Original Data Only**: Show only the original data points as markers
+- **All Data**: Show both original and interpolated data
+- **Show Gaps**: Highlight gaps in the data where interpolation has been limited
+
+This feature helps users understand which parts of the visualization are based on actual measurements versus interpolation.
 
 ### Interactive Plot Features
 
@@ -1661,6 +1706,100 @@ Example (`stage_2_temp_plotly.json`):
       "bgcolor": "rgba(0,0,0,0.5)",
       "bordercolor": "rgba(255,255,255,0.2)",
       "borderwidth": 1
+    }
+  }
+}
+```
+
+#### 8. Original vs Interpolated Data Views
+
+The `stage_{stage_num}_original_vs_interpolated.json` files contain the Plotly visualization data for original vs interpolated data within a specific stage.
+
+Example (`stage_2_original_vs_interpolated.json`):
+```json
+{
+  "original_data": {
+    "data": [
+      {
+        "x": [0.0, 1.0, 2.0, 3.0, ...],
+        "y": [163.3, 165.14063319843282, 167.11889377598294, 169.02869189211287, ...],
+        "type": "scatter",
+        "mode": "markers",
+        "name": "R1/2 T set [°C]",
+        "marker": {"color": "#ff6e6e"}
+      },
+      {
+        "x": [0.0, 1.0, 2.0, 3.0, ...],
+        "y": [156.2050364157259, 158.31467932637683, 160.54184267849114, 162.84644397781336, ...],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "R1/2 T read [°C]",
+        "line": {"color": "#5c9eff"}
+      }
+    ],
+    "layout": {
+      "title": "Stage 2 - Original vs Interpolated Data",
+      "xaxis": {
+        "title": "Time (minutes)",
+        "gridcolor": "rgba(255, 255, 255, 0.1)"
+      },
+      "yaxis": {
+        "title": "Temperature (°C) / Power (%)",
+        "gridcolor": "rgba(255, 255, 255, 0.1)"
+      },
+      "template": "plotly_dark",
+      "paper_bgcolor": "#1e1e1e",
+      "plot_bgcolor": "#2d2d2d",
+      "font": {"color": "#e0e0e0"},
+      "hovermode": "closest",
+      "legend": {
+        "orientation": "v",
+        "bgcolor": "rgba(0,0,0,0.5)",
+        "bordercolor": "rgba(255,255,255,0.2)",
+        "borderwidth": 1
+      }
+    }
+  },
+  "interpolated_data": {
+    "data": [
+      {
+        "x": [0.0, 1.0, 2.0, 3.0, ...],
+        "y": [163.3, 165.14063319843282, 167.11889377598294, 169.02869189211287, ...],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "R1/2 T set [°C]",
+        "line": {"color": "#6dff6d"}
+      },
+      {
+        "x": [0.0, 1.0, 2.0, 3.0, ...],
+        "y": [156.2050364157259, 158.31467932637683, 160.54184267849114, 162.84644397781336, ...],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "R1/2 T read [°C]",
+        "line": {"color": "#5c9eff"}
+      }
+    ],
+    "layout": {
+      "title": "Stage 2 - Original vs Interpolated Data",
+      "xaxis": {
+        "title": "Time (minutes)",
+        "gridcolor": "rgba(255, 255, 255, 0.1)"
+      },
+      "yaxis": {
+        "title": "Temperature (°C) / Power (%)",
+        "gridcolor": "rgba(255, 255, 255, 0.1)"
+      },
+      "template": "plotly_dark",
+      "paper_bgcolor": "#1e1e1e",
+      "plot_bgcolor": "#2d2d2d",
+      "font": {"color": "#e0e0e0"},
+      "hovermode": "closest",
+      "legend": {
+        "orientation": "v",
+        "bgcolor": "rgba(0,0,0,0.5)",
+        "bordercolor": "rgba(255,255,255,0.2)",
+        "borderwidth": 1
+      }
     }
   }
 }
@@ -2624,12 +2763,14 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Recent Updates
 
-### Original Data Point Filtering (2024-05-31)
-- Added the ability to filter out interpolated data points:
-  - Plots now show only original data points from the input file by default
-  - Added UI controls to toggle between showing all points or only original points
-  - Data points from the original file are tracked throughout the processing pipeline
-  - Original datetime values are preserved and associated with the correct data points
+### Original vs Interpolated Data Handling (2024-05-31)
+- Enhanced data processing to track original vs interpolated data points:
+  - Original data points from the input file are now distinctly marked
+  - Interpolated data points in large gaps are automatically excluded
+  - Stages that only consist of interpolated points are excluded
+  - Visual distinction between original data (markers) and interpolated data (lines)
+  - UI controls to filter and display only original data points
+  - Configurable maximum gap size for interpolation (default: 24 hours)
 
 ### Import System Enhancement (2024-05-30)
 - Improved the import system in utility scripts to ensure proper module resolution:

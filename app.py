@@ -204,6 +204,24 @@ def experiment(experiment_name):
         if not experiment_data:
             return render_template('error.html', message=f"Experiment '{decoded_name}' not found.")
         
+        # Add information about original vs interpolated points
+        if experiment_data['summary'] and 'stages_info' in experiment_data['summary']:
+            total_original_points = 0
+            total_interpolated_points = 0
+            
+            for stage_num, stage_info in experiment_data['summary']['stages_info'].items():
+                if 'original_points' in stage_info:
+                    total_original_points += stage_info['original_points']
+                if 'interpolated_points' in stage_info:
+                    total_interpolated_points += stage_info['interpolated_points']
+                    
+            experiment_data['total_original_points'] = total_original_points
+            experiment_data['total_interpolated_points'] = total_interpolated_points
+            experiment_data['interpolation_percentage'] = (
+                100 * total_interpolated_points / (total_original_points + total_interpolated_points)
+                if (total_original_points + total_interpolated_points) > 0 else 0
+            )
+        
         return render_template('experiment.html', experiment=experiment_data)
     except Exception as e:
         app.logger.error(f"Error in experiment route: {e}")
@@ -644,36 +662,6 @@ def api_fix_experiment_json(experiment_name):
             "success": False,
             "message": f"Error: {str(e)}",
             "traceback": traceback.format_exc()
-        }), 500
-
-@app.route('/api/toggle-plot-mode/<mode>')
-def toggle_plot_mode(mode):
-    """Toggle between showing all points or only original points"""
-    try:
-        if mode == 'original':
-            config.PLOT_ONLY_ORIGINAL_POINTS = True
-            return jsonify({
-                "success": True, 
-                "message": "Now showing only original data points",
-                "mode": "original"
-            })
-        elif mode == 'all':
-            config.PLOT_ONLY_ORIGINAL_POINTS = False
-            return jsonify({
-                "success": True, 
-                "message": "Now showing all data points including interpolated ones",
-                "mode": "all"
-            })
-        else:
-            return jsonify({
-                "success": False, 
-                "message": "Invalid mode. Use 'original' or 'all'."
-            }), 400
-    except Exception as e:
-        logger.error(f"Error toggling plot mode: {str(e)}")
-        return jsonify({
-            "success": False,
-            "message": f"Error: {str(e)}"
         }), 500
 
 # Run the application
